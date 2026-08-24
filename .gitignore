@@ -1,22 +1,8 @@
-.devcontainer/
-.vscode/
 .DS_Store
-# go.mod
-# go.sum
-# configs/
 
 .idea/
 
 files/logs/
-
-# Process markdown artifacts
-.ai/*.md
-docs/architecture/*.md
-docs/architecture/**/*.md
-iteration-log.md
-project-context.md
-configs/.instance_id
-configs/conf-localdev.yml
 
 # Go module cache accidentally committed on feature/market-solution-bundle-v1
 .cache/
