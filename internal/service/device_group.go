@@ -18,7 +18,7 @@ type TreeNode struct {
 	Children []*TreeNode  `json:"children,omitempty"`
 }
 
-func (*DeviceGroup) CreateDeviceGroup(req model.CreateDeviceGroupReq, claims *utils.UserClaims) error {
+func (*DeviceGroup) CreateDeviceGroup(req model.CreateDeviceGroupReq, claims *utils.UserClaims) (string, error) {
 	var deviceGroup = model.Group{}
 	t := time.Now().UTC()
 	deviceGroup.ID = uuid.NewString()
@@ -30,13 +30,13 @@ func (*DeviceGroup) CreateDeviceGroup(req model.CreateDeviceGroupReq, claims *ut
 		// 父分组存在性验证
 		parentGroup, err := dal.GetDeviceGroupDetail(*req.ParentId, claims.TenantID)
 		if err != nil {
-			return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+			return "", errcode.WithData(errcode.CodeDBError, map[string]interface{}{
 				"error":     err.Error(),
 				"parent_id": *req.ParentId,
 			})
 		}
 		if parentGroup == nil {
-			return errcode.WithVars(errcode.CodeNotFound, map[string]interface{}{
+			return "", errcode.WithVars(errcode.CodeNotFound, map[string]interface{}{
 				"error":     "parent_group_not_found",
 				"parent_id": *req.ParentId,
 			})
@@ -46,14 +46,14 @@ func (*DeviceGroup) CreateDeviceGroup(req model.CreateDeviceGroupReq, claims *ut
 	// 验证租户下分组名称不能重复（无论层级）
 	g, err := dal.GetGroupNameExistByTenant(req.Name, claims.TenantID)
 	if err != nil {
-		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+		return "", errcode.WithData(errcode.CodeDBError, map[string]interface{}{
 			"error":      err.Error(),
 			"group_name": req.Name,
 			"tenant_id":  claims.TenantID,
 		})
 	}
 	if g != nil {
-		return errcode.WithVars(203003, map[string]interface{}{
+		return "", errcode.WithVars(203003, map[string]interface{}{
 			"group_name": req.Name,
 		})
 	}
@@ -69,14 +69,14 @@ func (*DeviceGroup) CreateDeviceGroup(req model.CreateDeviceGroupReq, claims *ut
 
 	// 创建分组
 	if err := dal.CreateDeviceGroup(&deviceGroup); err != nil {
-		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+		return "", errcode.WithData(errcode.CodeDBError, map[string]interface{}{
 			"error":     err.Error(),
 			"group_id":  deviceGroup.ID,
 			"tenant_id": claims.TenantID,
 		})
 	}
 
-	return nil
+	return deviceGroup.ID, nil
 }
 
 func (*DeviceGroup) DeleteDeviceGroup(id string, claims *utils.UserClaims) error {

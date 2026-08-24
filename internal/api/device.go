@@ -317,9 +317,14 @@ func (*DeviceApi) MarketRefresh(c *gin.Context) {
 	var req struct {
 		RefreshToken string `json:"refresh_token" binding:"required"`
 	}
-	if !BindAndValidate(c, &req) { return }
+	if !BindAndValidate(c, &req) {
+		return
+	}
 	loginRsp, err := service.NewMarketClient().Refresh(c, req.RefreshToken)
-	if err != nil { c.Error(errcode.NewWithMessage(errcode.CodeSystemError, err.Error())); return }
+	if err != nil {
+		c.Error(errcode.NewWithMessage(errcode.CodeSystemError, err.Error()))
+		return
+	}
 	c.Set("data", loginRsp)
 }
 
@@ -428,12 +433,12 @@ func (*DeviceApi) CreateDeviceGroup(c *gin.Context) {
 		return
 	}
 	userClaims := c.MustGet("claims").(*utils.UserClaims)
-	err := service.GroupApp.DeviceGroup.CreateDeviceGroup(req, userClaims)
+	id, err := service.GroupApp.DeviceGroup.CreateDeviceGroup(req, userClaims)
 	if err != nil {
 		c.Error(err)
 		return
 	}
-	c.Set("data", nil)
+	c.Set("data", map[string]string{"id": id})
 }
 
 // DeleteDeviceGroup 删除设备分组
