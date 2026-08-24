@@ -486,6 +486,14 @@ func (*Device) DeleteDevice(id string, userClaims *utils.UserClaims) error {
 		})
 	}
 
+	err = dal.DeleteOTATaskDetailsByDeviceID(id, tx)
+	if err != nil {
+		tx.Rollback()
+		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+			"sql_error": err.Error(),
+		})
+	}
+
 	// 删除设备
 	err = dal.DeleteDeviceWithTx(id, userClaims.TenantID, tx)
 	if err != nil {
@@ -496,14 +504,18 @@ func (*Device) DeleteDevice(id string, userClaims *utils.UserClaims) error {
 	}
 
 	// 提交事务
-	tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+			"sql_error": err.Error(),
+		})
+	}
 	// 清除设备缓存
 	initialize.DelDeviceCache(id)
 	// 清除鉴权缓存
 	global.REDIS.Del(context.Background(), deviceInfo.Voucher)
 	// 通知协议插件
-	if protocolplugin.DisconnectDeviceByDeviceID(id) != nil {
-		logrus.Error("DisconnectDeviceByDeviceID failed:", err)
+	if disconnectErr := protocolplugin.DisconnectDeviceByDeviceID(id); disconnectErr != nil {
+		logrus.Error("DisconnectDeviceByDeviceID failed:", disconnectErr)
 	}
 
 	return nil

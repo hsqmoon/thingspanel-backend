@@ -67,6 +67,11 @@ func DeleteOTAUpgradeTask(id string) error {
 	return err
 }
 
+func DeleteOTATaskDetailsByDeviceID(deviceID string, tx *query.QueryTx) error {
+	_, err := tx.OtaUpgradeTaskDetail.Where(query.OtaUpgradeTaskDetail.DeviceID.Eq(deviceID)).Delete()
+	return err
+}
+
 func GetOtaUpgradeTaskListByPage(p *model.GetOTAUpgradeTaskListByPageReq) (int64, []map[string]interface{}, error) {
 	// 初始化SQL WHERE子句和参数
 	whereClause := "WHERE t.ota_upgrade_package_id = ?"

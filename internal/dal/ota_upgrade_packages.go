@@ -6,9 +6,11 @@ import (
 
 	model "project/internal/model"
 	query "project/internal/query"
+	global "project/pkg/global"
 
 	"github.com/sirupsen/logrus"
 	"gorm.io/gen"
+	"gorm.io/gorm"
 )
 
 // ALTER TABLE ota_upgrade_packages ALTER COLUMN additional_info SET DEFAULT '{}'::json;
@@ -23,14 +25,23 @@ func UpdateOtaUpgradePackage(p *model.OtaUpgradePackage) (gen.ResultInfo, error)
 }
 
 func DeleteOtaUpgradePackage(packageId string) error {
-	info, err := query.OtaUpgradePackage.Where(query.OtaUpgradePackage.ID.Eq(packageId)).Delete()
-	if err != nil {
-		return err
-	}
-	if info.RowsAffected == 0 {
-		return fmt.Errorf("no data deleted")
-	}
-	return nil
+	return global.DB.Transaction(func(tx *gorm.DB) error {
+		tasks := tx.Model(&model.OtaUpgradeTask{}).Select("id").Where("ota_upgrade_package_id = ?", packageId)
+		if err := tx.Where("ota_upgrade_task_id IN (?)", tasks).Delete(&model.OtaUpgradeTaskDetail{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("ota_upgrade_package_id = ?", packageId).Delete(&model.OtaUpgradeTask{}).Error; err != nil {
+			return err
+		}
+		result := tx.Where("id = ?", packageId).Delete(&model.OtaUpgradePackage{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("no data deleted")
+		}
+		return nil
+	})
 }
 
 func GetOtaUpgradePackageByID(id string) (*model.OtaUpgradePackage, error) {
