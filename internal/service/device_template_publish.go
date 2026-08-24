@@ -12,7 +12,7 @@ import (
 	"project/pkg/errcode"
 	"project/pkg/utils"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // ptrStr safely dereferences a *string, returning "" if nil.
@@ -157,15 +157,15 @@ func (*DeviceTemplate) PublishToMarket(req model.PublishToMarketReq, _ *utils.Us
 
 	// 8. Build publish request to market
 	marketReq := &model.PublishTemplateReq{
-		Name:               name,
-		Brand:              brand,
-		Model:              devModel,
-		Category:           category,
-		Author:             author,
-		Version:            version,
-		Description:        description,
-		CoverURL:           coverURL,
-		DeviceConfig:       deviceConfig,
+		Name:         name,
+		Brand:        brand,
+		Model:        devModel,
+		Category:     category,
+		Author:       author,
+		Version:      version,
+		Description:  description,
+		CoverURL:     coverURL,
+		DeviceConfig: deviceConfig,
 		TemplateDefinition: map[string]interface{}{
 			"web_chart_config": tplDef["web_chart_config"],
 			"app_chart_config": tplDef["app_chart_config"],

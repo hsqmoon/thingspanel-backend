@@ -9,7 +9,7 @@ import (
 
 	"project/internal/model"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestMarketClient_PublishBundle_Success(t *testing.T) {

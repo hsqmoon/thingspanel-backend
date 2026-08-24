@@ -75,6 +75,7 @@ func RouterInit() *gin.Engine {
 	controllers := new(api.Controller)
 	// 健康检查
 	router.GET("/health", controllers.SystemApi.HealthCheck)
+	router.GET("/live", controllers.SystemApi.LivenessCheck)
 
 	api := router.Group("api")
 	{

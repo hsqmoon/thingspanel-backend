@@ -20,9 +20,10 @@ type PutMessage struct {
 }
 
 type PutMessageForCommand struct {
-	DeviceID string  `json:"device_id" form:"device_id" validate:"required,max=36"`
-	Value    *string `json:"value" form:"value" validate:"omitempty,max=9999"`
-	Identify string  `json:"identify" form:"identify" validate:"required,max=255"`
+	DeviceID  string  `json:"device_id" form:"device_id" validate:"required,max=36"`
+	Value     *string `json:"value" form:"value" validate:"omitempty,max=9999"`
+	Identify  string  `json:"identify" form:"identify" validate:"required,max=255"`
+	CommandID string  `json:"command_id" form:"command_id" validate:"omitempty,max=255"`
 }
 
 type ParamID struct {

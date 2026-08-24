@@ -30,12 +30,12 @@ func (*OTAApi) CreateOTAUpgradePackage(c *gin.Context) {
 		return
 	}
 	var userClaims = c.MustGet("claims").(*utils.UserClaims)
-	err := service.GroupApp.OTA.CreateOTAUpgradePackage(&req, userClaims.TenantID)
+	id, err := service.GroupApp.OTA.CreateOTAUpgradePackage(&req, userClaims.TenantID)
 	if err != nil {
 		c.Error(err)
 		return
 	}
-	c.Set("data", nil)
+	c.Set("data", map[string]string{"id": id})
 }
 
 // DeleteOTAUpgradePackage
@@ -90,12 +90,12 @@ func (*OTAApi) CreateOTAUpgradeTask(c *gin.Context) {
 		return
 	}
 
-	err := service.GroupApp.OTA.CreateOTAUpgradeTask(&req)
+	id, err := service.GroupApp.OTA.CreateOTAUpgradeTask(&req)
 	if err != nil {
 		c.Error(err)
 		return
 	}
-	c.Set("data", nil)
+	c.Set("data", map[string]string{"id": id})
 }
 
 // DeleteOTAUpgradeTask

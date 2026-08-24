@@ -13,7 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func CreateOTAUpgradeTaskWithDetail(req *model.CreateOTAUpgradeTaskReq) ([]*model.OtaUpgradeTaskDetail, error) {
+func CreateOTAUpgradeTaskWithDetail(req *model.CreateOTAUpgradeTaskReq) (string, []*model.OtaUpgradeTaskDetail, error) {
 
 	var task = model.OtaUpgradeTask{}
 	var taskDetail = []*model.OtaUpgradeTaskDetail{}
@@ -41,24 +41,24 @@ func CreateOTAUpgradeTaskWithDetail(req *model.CreateOTAUpgradeTaskReq) ([]*mode
 	tx := query.Use(global.DB).Begin()
 
 	if tx.Error != nil {
-		return nil, tx.Error
+		return "", nil, tx.Error
 	}
 
 	if err := tx.OtaUpgradeTask.Create(&task); err != nil {
 		tx.Rollback()
-		return nil, err
+		return "", nil, err
 	}
 
 	if err := tx.OtaUpgradeTaskDetail.CreateInBatches(taskDetail, len(taskDetail)); err != nil {
 		tx.Rollback()
-		return nil, err
+		return "", nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
-	return taskDetail, nil
+	return taskId, taskDetail, nil
 
 }
 
@@ -146,9 +146,9 @@ func GetOtaUpgradeTaskDetailListByPage(p *model.GetOTAUpgradeTaskDetailReq) (int
 
 	// 模糊查询
 	if p.TaskStatus != nil {
-		detailDataBuilder = detailDataBuilder.Where(detailData.Name.Like(fmt.Sprintf("%%%s%%", *p.DeviceName)))
+		detailDataBuilder = detailDataBuilder.Where(otaTaskDetail.Status.Eq(*p.TaskStatus))
 	}
-	detailDataBuilder.Where(otaTaskDetail.OtaUpgradeTaskID.Eq(p.OtaUpgradeTaskId))
+	detailDataBuilder = detailDataBuilder.Where(otaTaskDetail.OtaUpgradeTaskID.Eq(p.OtaUpgradeTaskId))
 
 	// 分页
 	if p.Page != 0 && p.PageSize != 0 {
@@ -164,7 +164,7 @@ func GetOtaUpgradeTaskDetailListByPage(p *model.GetOTAUpgradeTaskDetailReq) (int
 
 	// 升级任务详情id、设备名称设备编号、设备名、设备版本号、升级包版本号、升级进度、更新时间、状态、状态详情
 	detailDataBuilder = detailDataBuilder.Select(
-		otaTaskDetail.ID, otaTaskDetail.OtaUpgradeTaskID, detailData.DeviceNumber, detailData.Name, detailData.CurrentVersion,
+		otaTaskDetail.ID, otaTaskDetail.OtaUpgradeTaskID, detailData.ID.As("device_id"), detailData.DeviceNumber, detailData.Name, detailData.CurrentVersion,
 		otaPackage.Version, otaTaskDetail.Step, otaTaskDetail.UpdatedAt,
 		otaTaskDetail.Status, otaTaskDetail.StatusDescription,
 	)

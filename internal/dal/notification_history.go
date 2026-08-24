@@ -1,15 +1,15 @@
 package dal
-
+	
 import (
 	"context"
 	"fmt"
-
+	
 	model "project/internal/model"
 	query "project/internal/query"
-
+	
 	"github.com/sirupsen/logrus"
 )
-
+	
 func GetNotificationHisoryListByPage(notifications *model.GetNotificationHistoryListByPageReq) (int64, []*model.NotificationHistory, error) {
 	q := query.NotificationHistory
 	var count int64
@@ -18,11 +18,11 @@ func GetNotificationHisoryListByPage(notifications *model.GetNotificationHistory
 	if notifications.NotificationType != nil && *notifications.NotificationType != "" {
 		queryBuilder = queryBuilder.Where(q.NotificationType.Like(fmt.Sprintf("%%%s%%", *notifications.NotificationType)))
 	}
-
+	
 	if notifications.SendTarget != nil && *notifications.SendTarget != "" {
 		queryBuilder = queryBuilder.Where(q.SendTarget.Eq(*notifications.SendTarget))
 	}
-
+	
 	if notifications.SendTimeStart != nil && notifications.SendTimeStop != nil {
 		queryBuilder = queryBuilder.Where(q.SendTime.Between(*notifications.SendTimeStart, *notifications.SendTimeStop))
 	}
@@ -56,20 +56,20 @@ func CreateNotificationHistory(notificationHistory *model.NotificationHistory) e
 func UpdateNotificationHistory(id string, status *string, remark *string) (int64, error) {
 	q := query.NotificationHistory
 	updates := make(map[string]interface{})
-	
+
 	if status != nil {
 		updates["send_result"] = *status
 	}
 	if remark != nil {
 		updates["remark"] = *remark
 	}
-	
+
 	result, err := q.Where(q.ID.Eq(id)).Updates(updates)
 	if err != nil {
 		logrus.Error("更新通知历史记录失败:", err)
 		return 0, err
 	}
-	
+
 	return result.RowsAffected, nil
 }
 
@@ -77,7 +77,7 @@ func UpdateNotificationHistory(id string, status *string, remark *string) (int64
 func UpdateNotificationHistoryWithContent(id string, status *string, remark *string, content *string) (int64, error) {
 	q := query.NotificationHistory
 	updates := make(map[string]interface{})
-	
+
 	if status != nil {
 		updates["send_result"] = *status
 	}
@@ -87,12 +87,12 @@ func UpdateNotificationHistoryWithContent(id string, status *string, remark *str
 	if content != nil {
 		updates["send_content"] = *content
 	}
-	
+
 	result, err := q.Where(q.ID.Eq(id)).Updates(updates)
 	if err != nil {
 		logrus.Error("更新通知历史记录失败:", err)
 		return 0, err
 	}
-	
+
 	return result.RowsAffected, nil
 }

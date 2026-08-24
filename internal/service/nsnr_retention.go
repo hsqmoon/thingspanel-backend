@@ -28,6 +28,8 @@ ON CONFLICT(device_id,"key",bucket_ts) DO UPDATE SET avg_number=excluded.avg_num
 func RunNSNRRetention() error {
 	rawCutoff := time.Now().UTC().Add(-90 * 24 * time.Hour).UnixMilli()
 	hourlyCutoff := time.Now().UTC().AddDate(-2, 0, 0).UnixMilli()
-	if err := global.DB.Exec(`DELETE FROM telemetry_datas WHERE ts<?`, rawCutoff).Error; err != nil { return err }
+	if err := global.DB.Exec(`DELETE FROM telemetry_datas WHERE ts<?`, rawCutoff).Error; err != nil {
+		return err
+	}
 	return global.DB.Exec(`DELETE FROM telemetry_hourly WHERE bucket_ts<?`, hourlyCutoff).Error
 }

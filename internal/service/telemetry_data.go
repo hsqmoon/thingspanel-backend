@@ -684,12 +684,12 @@ func (*TelemetryData) GetSimulationInit(deviceId string) (*model.SimulationInitR
 	defaultData := `{"_data1": 25.5, "_data2": 60}`
 
 	resp := &model.SimulationInitResp{
-		Username:         username,
-		Password:         password,
-		ClientID:        clientID,
-		Server:          host,
-		Port:            port,
-		Topic:           config.MqttConfig.Telemetry.SubscribeTopic,
+		Username: username,
+		Password: password,
+		ClientID: clientID,
+		Server:   host,
+		Port:     port,
+		Topic:    config.MqttConfig.Telemetry.SubscribeTopic,
 		TopicOptions: []model.SimulationTopicOption{
 			{Label: "遥测", Value: config.MqttConfig.Telemetry.SubscribeTopic},
 			{Label: "属性", Value: attrTopic},
@@ -1347,7 +1347,7 @@ func (t *TelemetryData) TelemetryPutMessage(ctx context.Context, userID string, 
 			logrus.Error(ctx, "failed to update telemetry set log", updateErr)
 		}
 
-		return fmt.Errorf(errorMessage)
+		return fmt.Errorf("%s", errorMessage)
 	}
 
 	// 构造下行消息（使用日志ID作为MessageID）

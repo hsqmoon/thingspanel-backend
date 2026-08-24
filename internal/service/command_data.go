@@ -65,6 +65,9 @@ func (c *CommandData) CommandPutMessage(ctx context.Context, operatorID string, 
 	commandData := map[string]interface{}{
 		"method": putMessageReq.Identify, // identify 映射为 method
 	}
+	if putMessageReq.CommandID != "" {
+		commandData["commandId"] = putMessageReq.CommandID
+	}
 	if putMessageReq.Value != nil {
 		valueStr := strings.TrimSpace(*putMessageReq.Value)
 		if valueStr != "" {

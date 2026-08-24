@@ -186,26 +186,32 @@ func CheckVersion(db *gorm.DB) error {
 	versionNumber := global.VERSION_NUMBER // 当前程序版本号
 	var dataVersionNumber int              // 数据库版本号
 
+	tx := db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	defer tx.Rollback()
+	if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", int64(0x4e534e525450)).Error; err != nil {
+		return err
+	}
 	// 判断有没有sys_version的表
 	var exists bool
-	result := db.Raw("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='sys_version')").Scan(&exists)
+	result := tx.Raw("SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='sys_version')").Scan(&exists)
 	if result.Error != nil {
 		return result.Error
 	}
-	// 创建事务
 	logrus.Info("----", exists)
 	if !exists { // 如果不存在sys_version表，创建sys_version表
 		logrus.Info("创建sys_version表")
 		dataVersionNumber = 0
-		t := db.Exec("CREATE TABLE sys_version (version_number INT NOT NULL DEFAULT 0, version varchar(255) NOT NULL, PRIMARY KEY (version_number))")
+		t := tx.Exec("CREATE TABLE sys_version (version_number INT NOT NULL DEFAULT 0, version varchar(255) NOT NULL, PRIMARY KEY (version_number))")
 		if t.Error != nil {
 			return t.Error
 		}
 
 	}
-	tx := db.Begin()
 	// 查询版本号
-	result = db.Table("sys_version").Select("version_number").Scan(&dataVersionNumber)
+	result = tx.Table("sys_version").Select("version_number").Scan(&dataVersionNumber)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -239,7 +245,8 @@ func CheckVersion(db *gorm.DB) error {
 			// 读取 SQL 脚本文件
 			sqlFile, err := os.ReadFile(fileName)
 			if err != nil {
-				panic(err)
+				tx.Rollback()
+				return err
 			}
 			fmt.Println("执行sql脚本...")
 			// 执行 SQL 脚本

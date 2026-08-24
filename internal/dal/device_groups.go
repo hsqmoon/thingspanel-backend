@@ -135,7 +135,7 @@ func GetDeviceGroupStatistics(groupID string, tenantID string) (*model.DeviceGro
 
 	var row deviceGroupStatisticsRow
 	placeholders := strings.TrimRight(strings.Repeat("?,", len(deviceIDs)), ",")
-	sql := fmt.Sprintf(`
+	sql := `
 		SELECT
 			COUNT(DISTINCT d.id) AS device_total,
 			COALESCE(SUM(CASE WHEN d.is_online = 1 THEN 1 ELSE 0 END), 0) AS online_total,
@@ -146,7 +146,7 @@ func GetDeviceGroupStatistics(groupID string, tenantID string) (*model.DeviceGro
 		WHERE d.tenant_id = ?
 		  AND d.activate_flag = 'active'
 		  AND d.id IN (` + placeholders + `)
-	`)
+	`
 	args := make([]interface{}, 0, len(deviceIDs)+1)
 	args = append(args, tenantID)
 	for _, deviceID := range deviceIDs {

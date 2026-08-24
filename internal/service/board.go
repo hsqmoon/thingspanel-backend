@@ -293,4 +293,3 @@ func (*Device) GetDeviceTrend(ctx context.Context, tenantID string, startTime, e
 		Points: points,
 	}, nil
 }
-

@@ -3,7 +3,7 @@ package utils
 import (
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/sirupsen/logrus"
 )
 
@@ -17,7 +17,7 @@ type UserClaims struct {
 	CreateTime time.Time `json:"create_time"`
 	Authority  string    `json:"authority"`
 	TenantID   string    `json:"tenant_id"`
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 }
 
 func NewJWT(key interface{}) *JWT {
@@ -28,7 +28,7 @@ func NewJWT(key interface{}) *JWT {
 
 // 生成token
 func (j *JWT) GenerateToken(claims UserClaims) (string, error) {
-	claims.ExpiresAt = time.Now().Add(time.Hour * 24 * 30).Unix()
+	claims.ExpiresAt = jwt.NewNumericDate(time.Now().Add(time.Hour * 24 * 30))
 	tokenClaims := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	// 生成token
@@ -39,7 +39,7 @@ func (j *JWT) GenerateToken(claims UserClaims) (string, error) {
 func (j *JWT) ParseToken(token string) (*UserClaims, error) {
 	tokenClaims, err := jwt.ParseWithClaims(token, &UserClaims{}, func(_ *jwt.Token) (interface{}, error) {
 		return j.Key, nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
 		logrus.Error(err.Error())
 		return nil, err
@@ -47,6 +47,5 @@ func (j *JWT) ParseToken(token string) (*UserClaims, error) {
 	if claims, ok := tokenClaims.Claims.(*UserClaims); ok && tokenClaims.Valid {
 		return claims, nil
 	}
-	logrus.Error(err.Error())
-	return nil, err
+	return nil, jwt.ErrTokenInvalidClaims
 }

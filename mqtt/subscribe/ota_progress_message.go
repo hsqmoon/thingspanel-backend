@@ -64,17 +64,19 @@ func OtaUpgrade(payload []byte, _ string) {
 	otaTaskDetail, err := query.OtaUpgradeTaskDetail.
 		Where(query.OtaUpgradeTaskDetail.DeviceID.Eq(device.ID),
 			query.OtaUpgradeTaskDetail.Status.In(2, 3),
-		).First()
-	if err != nil && otaTaskDetail != nil {
+		).Order(query.OtaUpgradeTaskDetail.UpdatedAt.Desc()).First()
+	if err != nil || otaTaskDetail == nil {
 		logrus.Errorf("未找到对应升级任务")
 		return
 	}
 
 	intProgress, err := strconv.Atoi(progressMsg.UpgradeProgress.(string))
 	if err != nil {
-		desc := progressMsg.UpgradeProgress.(string) + " " + progressMsg.StatusDetail
-		otaTaskDetail.StatusDescription = &desc
+		logrus.Error("OTA progress is not an integer: ", err)
+		return
 	}
+	step := int16(intProgress)
+	otaTaskDetail.Step = &step
 
 	switch {
 	case intProgress == -1:
