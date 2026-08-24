@@ -16,6 +16,15 @@ var c = cron.New()
 func CronInit() {
 	// 初始化设备统计定时任务
 	InitDeviceStatsCron(c)
+	c.AddFunc("0 */5 * * * *", func() {
+		if err := service.RunNSNRHourlyAggregate(); err != nil { logrus.Error("NSNR hourly aggregation failed: ", err) }
+	})
+	c.AddFunc("0 10 0 * * *", func() {
+		if err := service.RunNSNRDailyAggregate(); err != nil { logrus.Error("NSNR daily aggregation failed: ", err) }
+	})
+	c.AddFunc("0 30 2 * * *", func() {
+		if err := service.RunNSNRRetention(); err != nil { logrus.Error("NSNR retention cleanup failed: ", err) }
+	})
 
 	// 单次定义成任务 - 每5秒执行一次
 	c.AddFunc("*/5 * * * * *", func() {

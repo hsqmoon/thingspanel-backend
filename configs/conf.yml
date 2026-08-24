@@ -126,8 +126,8 @@ mqtt:
 
     qos: 1
   ota:
-    # ota升级包消息推送：ota/devices/infrom/{device_number}
-    publish_topic: ota/devices/infrom/
+    # ota升级包消息推送：ota/devices/inform/{device_number}
+    publish_topic: ota/devices/inform/
     subscribe_topic: ota/devices/progress
     qos: 1
 
@@ -189,7 +189,7 @@ heartbeat:
 
 # Telemetry 安装量监测配置
 telemetry:
-  enabled: true                  # 仅发送匿名实例级遥测，可随时关闭
+  enabled: false                 # NSNR 生产环境默认禁用匿名实例遥测
   posthog_key: "phc_Q3bkPulhlPGg8yoR4xel4PJuqE1UJCC4dRRKUmjnD91"   # TODO: Replace with your actual PostHog API Key
   posthog_host: "https://stats.thingspanel.cn"
   heartbeat_interval: "1h"

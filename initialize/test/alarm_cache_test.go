@@ -2,6 +2,7 @@ package test
 
 import (
 	"fmt"
+	"os"
 	"project/initialize"
 	"testing"
 
@@ -25,6 +26,9 @@ var (
 )
 
 func TestSetDevice(t *testing.T) {
+	if os.Getenv("NSNR_INTEGRATION_TEST") != "1" {
+		t.Skip("requires an external Redis integration environment")
+	}
 	logrus.Debug("单元测试开始执行:")
 	err := alarmCache.SetDevice(group_id, scene_automation_id, device_ids, contents)
 	if err != nil {
@@ -45,6 +49,9 @@ func TestSetDevice(t *testing.T) {
 }
 
 func TestDeleteBygroupId(t *testing.T) {
+	if os.Getenv("NSNR_INTEGRATION_TEST") != "1" {
+		t.Skip("requires an external Redis integration environment")
+	}
 	fmt.Println("测试删除缓存...")
 
 	err := alarmCache.DeleteBygroupId(group_id)

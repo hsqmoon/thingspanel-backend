@@ -29,6 +29,9 @@ var config *initialize.DbConfig
 var db *gorm.DB
 
 func TestDatebase(t *testing.T) {
+	if os.Getenv("NSNR_INTEGRATION_TEST") != "1" {
+		t.Skip("requires an external TimescaleDB integration environment")
+	}
 	// 要保证测试顺序，下面的函数都不能以Test开头
 	testConnect(t)
 	testDDLInit(t)

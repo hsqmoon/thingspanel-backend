@@ -71,7 +71,7 @@ func PgInit() (*gorm.DB, error) {
 	// 检查版本
 	err = CheckVersion(db)
 	if err != nil {
-		fmt.Println(err)
+		return nil, fmt.Errorf("database migration failed: %w", err)
 	}
 
 	return db, nil
