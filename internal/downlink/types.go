@@ -10,6 +10,7 @@ const (
 	MessageTypeAttributeSet MessageType = "attribute_set" // 属性设置
 	MessageTypeAttributeGet MessageType = "attribute_get" // 属性获取
 	MessageTypeTelemetry    MessageType = "telemetry"     // 遥测数据下发
+	MessageTypeOTA          MessageType = "ota"           // OTA 通知
 )
 
 // Message 下行消息（Service 传递给 downlink 的数据）

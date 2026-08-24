@@ -8,6 +8,7 @@ import (
 	"project/internal/dal"
 	"project/internal/diagnostics"
 	"project/internal/processor"
+	"project/internal/query"
 
 	"github.com/sirupsen/logrus"
 )
@@ -47,6 +48,29 @@ func (h *Handler) HandleAttributeGet(ctx context.Context, msg *Message) {
 // HandleTelemetry 处理遥测数据下发
 func (h *Handler) HandleTelemetry(ctx context.Context, msg *Message) {
 	h.handle(ctx, msg, processor.DataTypeTelemetryControl)
+}
+
+func (h *Handler) HandleOTA(_ context.Context, msg *Message) {
+	if msg == nil || msg.DeviceNumber == "" || len(msg.Data) == 0 {
+		h.updateOTATaskStatus(msg, 5, "invalid OTA message")
+		return
+	}
+	if err := h.publishMessage(msg, msg.Data); err != nil {
+		h.updateOTATaskStatus(msg, 5, err.Error())
+		return
+	}
+	h.updateOTATaskStatus(msg, 2, "已通知设备")
+}
+
+func (h *Handler) updateOTATaskStatus(msg *Message, status int16, description string) {
+	if msg == nil || msg.MessageID == "" {
+		return
+	}
+	now := time.Now().UTC()
+	_, err := query.OtaUpgradeTaskDetail.Where(query.OtaUpgradeTaskDetail.ID.Eq(msg.MessageID)).Updates(map[string]interface{}{"status": status, "status_description": description, "updated_at": now})
+	if err != nil {
+		h.logger.WithError(err).WithField("ota_task_detail_id", msg.MessageID).Error("failed to update OTA task status")
+	}
 }
 
 // handle 通用处理逻辑

@@ -469,6 +469,8 @@ func (a *Adapter) PublishMessage(deviceNumber string, msgType downlink.MessageTy
 		} else {
 			topic = topicPrefix + BuildAttributeGetTopic(deviceNumber)
 		}
+	case downlink.MessageTypeOTA:
+		topic = BuildOTATopic(deviceNumber)
 	default:
 		return fmt.Errorf("unknown message type: %s", msgType)
 	}

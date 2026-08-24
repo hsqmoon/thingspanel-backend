@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	initialize "project/initialize"
 	dal "project/internal/dal"
+	"project/internal/downlink"
 	model "project/internal/model"
 	query "project/internal/query"
-	"project/mqtt/publish"
 	"project/pkg/common"
 	global "project/pkg/global"
 	utils "project/pkg/utils"
@@ -20,7 +22,47 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type OTA struct{}
+type OTA struct{ downlinkBus *downlink.Bus }
+
+func (o *OTA) SetDownlinkBus(bus *downlink.Bus) { o.downlinkBus = bus }
+
+func (o *OTA) HandleProgress(platformDeviceID string, values []byte) error {
+	device, err := initialize.GetDeviceCacheById(platformDeviceID)
+	if err != nil {
+		return err
+	}
+	var progress struct {
+		Step any    `json:"step"`
+		Desc string `json:"desc"`
+	}
+	if err = json.Unmarshal(values, &progress); err != nil {
+		return err
+	}
+	stepText := fmt.Sprint(progress.Step)
+	step, err := strconv.Atoi(strings.TrimSuffix(stepText, ".0"))
+	if err != nil {
+		return fmt.Errorf("invalid OTA progress %q", stepText)
+	}
+	detail, err := query.OtaUpgradeTaskDetail.Where(query.OtaUpgradeTaskDetail.DeviceID.Eq(device.ID), query.OtaUpgradeTaskDetail.Status.In(2, 3)).Order(query.OtaUpgradeTaskDetail.UpdatedAt.Desc()).First()
+	if err != nil {
+		return err
+	}
+	progressValue := int16(step)
+	detail.Step = &progressValue
+	detail.StatusDescription = &progress.Desc
+	switch {
+	case step < 0:
+		detail.Status = 5
+	case step > 0 && step < 100:
+		detail.Status = 3
+	case step == 100:
+		detail.Status = 4
+	default:
+		return fmt.Errorf("invalid OTA progress %d", step)
+	}
+	_, err = query.OtaUpgradeTaskDetail.Where(query.OtaUpgradeTaskDetail.ID.Eq(detail.ID)).Updates(detail)
+	return err
+}
 
 func (*OTA) CreateOTAUpgradePackage(req *model.CreateOTAUpgradePackageReq, tenantID string) (string, error) {
 	var ota = model.OtaUpgradePackage{}
@@ -249,7 +291,7 @@ func (o *OTA) UpdateOTAUpgradeTaskStatus(req *model.UpdateOTAUpgradeTaskStatusRe
 
 	return err
 }
-func (*OTA) PushOTAUpgradePackage(taskDetail *model.OtaUpgradeTaskDetail) error {
+func (o *OTA) PushOTAUpgradePackage(taskDetail *model.OtaUpgradeTaskDetail) error {
 	// 查看设备是否在线
 	device := &model.Device{}
 	device, err := query.Device.Where(query.Device.ID.Eq(taskDetail.DeviceID)).First()
@@ -328,18 +370,10 @@ func (*OTA) PushOTAUpgradePackage(taskDetail *model.OtaUpgradeTaskDetail) error 
 	if json_err != nil {
 		logrus.Error(err)
 	} else {
-		if err = publish.PublishOtaAdress(device.DeviceNumber, palyload); err != nil {
-			return err
+		if o.downlinkBus == nil {
+			return fmt.Errorf("downlink service not available")
 		}
-		taskDetail.Status = 2
-		desc := "已通知设备"
-		taskDetail.StatusDescription = &desc
-		t := time.Now().UTC()
-		taskDetail.UpdatedAt = &t
-		_, err := query.OtaUpgradeTaskDetail.Updates(taskDetail)
-		if err != nil {
-			return err
-		}
+		o.downlinkBus.PublishOTA(&downlink.Message{DeviceID: device.ID, DeviceNumber: device.DeviceNumber, DeviceType: "1", Type: downlink.MessageTypeOTA, Data: palyload, MessageID: taskDetail.ID})
 	}
 
 	return nil

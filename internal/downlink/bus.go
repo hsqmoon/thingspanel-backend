@@ -11,6 +11,7 @@ type Bus struct {
 	attributeSetChan chan *Message
 	attributeGetChan chan *Message
 	telemetryChan    chan *Message
+	otaChan          chan *Message
 	bufferSize       int
 	wg               sync.WaitGroup
 }
@@ -22,6 +23,7 @@ func NewBus(bufferSize int) *Bus {
 		attributeSetChan: make(chan *Message, bufferSize),
 		attributeGetChan: make(chan *Message, bufferSize),
 		telemetryChan:    make(chan *Message, bufferSize),
+		otaChan:          make(chan *Message, bufferSize),
 		bufferSize:       bufferSize,
 	}
 }
@@ -46,6 +48,10 @@ func (b *Bus) PublishTelemetry(msg *Message) {
 	b.telemetryChan <- msg
 }
 
+func (b *Bus) PublishOTA(msg *Message) {
+	b.otaChan <- msg
+}
+
 // SubscribeCommand 订阅命令消息
 func (b *Bus) SubscribeCommand() <-chan *Message {
 	return b.commandChan
@@ -66,12 +72,17 @@ func (b *Bus) SubscribeTelemetry() <-chan *Message {
 	return b.telemetryChan
 }
 
+func (b *Bus) SubscribeOTA() <-chan *Message {
+	return b.otaChan
+}
+
 // Close 关闭总线
 func (b *Bus) Close() {
 	close(b.commandChan)
 	close(b.attributeSetChan)
 	close(b.attributeGetChan)
 	close(b.telemetryChan)
+	close(b.otaChan)
 	b.wg.Wait()
 }
 
@@ -136,6 +147,21 @@ func (b *Bus) Start(ctx context.Context, handler *Handler) {
 			case msg := <-b.telemetryChan:
 				if msg != nil {
 					handler.HandleTelemetry(ctx, msg)
+				}
+			}
+		}
+	}()
+
+	b.wg.Add(1)
+	go func() {
+		defer b.wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg := <-b.otaChan:
+				if msg != nil {
+					handler.HandleOTA(ctx, msg)
 				}
 			}
 		}

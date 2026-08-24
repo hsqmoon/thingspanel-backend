@@ -21,7 +21,8 @@ const (
 
 	// TopicPatternStatus 状态上报 Topic 模式
 	// 格式: devices/status/{device_id}
-	TopicPatternStatus = "devices/status/+"
+	TopicPatternStatus      = "devices/status/+"
+	TopicPatternOTAProgress = "ota/devices/progress"
 
 	// 网关 Topic 模式（前缀为 gateway/）
 	TopicPatternGatewayTelemetry = "gateway/telemetry"
@@ -46,12 +47,13 @@ const (
 	// TopicTemplateTelemetryControl 遥测控制 Topic 模板
 	// %s = device_number（无 message_id）
 	TopicTemplateTelemetryControl = "devices/telemetry/control/%s"
+	TopicTemplateOTA              = "ota/devices/inform/%s"
 
 	// 网关下行 Topic 模板
-	TopicTemplateGatewayAttributeSet      = "gateway/attributes/set/%s/%s"      // gateway_number + message_id
-	TopicTemplateGatewayAttributeGet      = "gateway/attributes/get/%s"         // gateway_number
-	TopicTemplateGatewayCommand           = "gateway/command/%s/%s"             // gateway_number + message_id
-	TopicTemplateGatewayTelemetryControl  = "gateway/telemetry/control/%s"      // gateway_number
+	TopicTemplateGatewayAttributeSet     = "gateway/attributes/set/%s/%s" // gateway_number + message_id
+	TopicTemplateGatewayAttributeGet     = "gateway/attributes/get/%s"    // gateway_number
+	TopicTemplateGatewayCommand          = "gateway/command/%s/%s"        // gateway_number + message_id
+	TopicTemplateGatewayTelemetryControl = "gateway/telemetry/control/%s" // gateway_number
 )
 
 // 响应 Topic 模板（设备 → 平台的 ACK）
@@ -65,8 +67,8 @@ const (
 	TopicTemplateEventResponse = "devices/event/response/%s/%s"
 
 	// 命令/属性设置响应订阅模式
-	TopicPatternCommandResponse      = "devices/command/response/+"
-	TopicPatternAttributeSetResponse = "devices/attributes/set/response/+"
+	TopicPatternCommandResponse             = "devices/command/response/+"
+	TopicPatternAttributeSetResponse        = "devices/attributes/set/response/+"
 	TopicPatternGatewayCommandResponse      = "gateway/command/response/+"
 	TopicPatternGatewayAttributeSetResponse = "gateway/attributes/set/response/+"
 )
@@ -99,6 +101,10 @@ func BuildCommandTopic(deviceNumber, messageID string) string {
 // BuildTelemetryControlTopic 构造遥测控制 Topic
 func BuildTelemetryControlTopic(deviceNumber string) string {
 	return fmt.Sprintf(TopicTemplateTelemetryControl, deviceNumber)
+}
+
+func BuildOTATopic(deviceNumber string) string {
+	return fmt.Sprintf(TopicTemplateOTA, deviceNumber)
 }
 
 // BuildGatewayAttributeSetTopic 构造网关属性设置 Topic

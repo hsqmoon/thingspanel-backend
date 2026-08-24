@@ -96,6 +96,7 @@ func WithDownlinkService() Option {
 		service.GroupApp.CommandData.SetDownlinkBus(bus)
 		service.GroupApp.AttributeData.SetDownlinkBus(bus)
 		service.GroupApp.TelemetryData.SetDownlinkBus(bus)
+		service.GroupApp.OTA.SetDownlinkBus(bus)
 
 		a.Logger.WithFields(logrus.Fields{
 			"module":      "downlink",
