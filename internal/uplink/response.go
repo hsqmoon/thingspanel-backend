@@ -84,14 +84,15 @@ func (f *ResponseUplink) processMessage(msg *DeviceMessage) {
 
 	// 2. 解析响应数据
 	responseData, success := f.parseResponse(msg.Payload)
+	responseRaw := string(msg.Payload)
 
 	// 3. 根据消息类型更新对应日志表
 	switch msg.Type {
 	case MessageTypeCommandResponse, MessageTypeGatewayCommandResponse:
-		f.updateCommandLog(messageID, success, responseData)
+		f.updateCommandLog(messageID, success, responseData, responseRaw)
 
 	case MessageTypeAttributeSetResponse, MessageTypeGatewayAttributeSetResponse:
-		f.updateAttributeLog(messageID, success, responseData)
+		f.updateAttributeLog(messageID, success, responseData, responseRaw)
 
 	default:
 		f.logger.WithField("type", msg.Type).Warn("Unknown response type")
@@ -137,7 +138,7 @@ func (f *ResponseUplink) parseResponse(payload []byte) (string, bool) {
 }
 
 // updateCommandLog 更新命令日志
-func (f *ResponseUplink) updateCommandLog(messageID string, success bool, errorMsg string) {
+func (f *ResponseUplink) updateCommandLog(messageID string, success bool, errorMsg, responseRaw string) {
 	// 状态: 3=成功, 4=失败
 	status := "3" // 成功
 	var errorMsgPtr *string
@@ -153,6 +154,7 @@ func (f *ResponseUplink) updateCommandLog(messageID string, success bool, errorM
 		Updates(map[string]interface{}{
 			"status":        &status,
 			"error_message": errorMsgPtr,
+			"rsp_data":      &responseRaw,
 		})
 
 	if err != nil {
@@ -173,7 +175,7 @@ func (f *ResponseUplink) updateCommandLog(messageID string, success bool, errorM
 }
 
 // updateAttributeLog 更新属性设置日志
-func (f *ResponseUplink) updateAttributeLog(messageID string, success bool, errorMsg string) {
+func (f *ResponseUplink) updateAttributeLog(messageID string, success bool, errorMsg, responseRaw string) {
 	// 状态: 3=成功, 4=失败
 	status := "3" // 成功
 	var errorMsgPtr *string
@@ -189,6 +191,7 @@ func (f *ResponseUplink) updateAttributeLog(messageID string, success bool, erro
 		Updates(map[string]interface{}{
 			"status":        &status,
 			"error_message": errorMsgPtr,
+			"rsp_data":      &responseRaw,
 		})
 
 	if err != nil {
