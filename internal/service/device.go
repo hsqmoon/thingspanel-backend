@@ -22,7 +22,7 @@ import (
 	common "project/pkg/common"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/xuri/excelize/v2"
@@ -61,7 +61,7 @@ func (*Device) CreateDevice(req model.CreateDeviceReq, claims *utils.UserClaims)
 
 		device.ID = deviceID
 	} else {
-		device.ID = uuid.New()
+		device.ID = uuid.NewString()
 	}
 	device.Name = req.Name
 	if req.Voucher == nil {
@@ -73,16 +73,16 @@ func (*Device) CreateDevice(req model.CreateDeviceReq, claims *utils.UserClaims)
 			}
 			if deviceConfig.ProtocolType != nil && *deviceConfig.ProtocolType == "MQTT" {
 				if deviceConfig.VoucherType != nil && *deviceConfig.VoucherType == "BASIC" {
-					device.Voucher = `{"username":"` + uuid.New()[0:22] + `","password":"` + uuid.New()[0:7] + `"}`
+					device.Voucher = `{"username":"` + uuid.NewString()[0:22] + `","password":"` + uuid.NewString()[0:7] + `"}`
 				} else {
-					device.Voucher = `{"username":"` + uuid.New()[0:22] + `"}`
+					device.Voucher = `{"username":"` + uuid.NewString()[0:22] + `"}`
 				}
 			} else {
 				// 其他协议默认一个UUID
-				device.Voucher = `{"default":"` + uuid.New() + `"}`
+				device.Voucher = `{"default":"` + uuid.NewString() + `"}`
 			}
 		} else {
-			device.Voucher = `{"username":"` + uuid.New()[0:22] + `","password":"` + uuid.New()[0:7] + `"}` // 随机生成
+			device.Voucher = `{"username":"` + uuid.NewString()[0:22] + `","password":"` + uuid.NewString()[0:7] + `"}` // 随机生成
 		}
 	} else {
 		device.Voucher = *req.Voucher
@@ -170,10 +170,10 @@ func (*Device) CreateDeviceBatch(req model.BatchCreateDeviceReq, claims *utils.U
 		}
 
 		device := model.Device{
-			ID:              uuid.New(),
+			ID:              uuid.NewString(),
 			Name:            &v.DeviceName,
 			DeviceNumber:    v.DeviceNumber,
-			Voucher:         `{"username":"` + uuid.New()[0:22] + `"}`,
+			Voucher:         `{"username":"` + uuid.NewString()[0:22] + `"}`,
 			TenantID:        claims.TenantID,
 			CreatedAt:       &t,
 			UpdateAt:        &t,
@@ -373,7 +373,7 @@ func (*Device) ActiveDevice(req model.ActiveDeviceReq) (any, error) {
 	}
 	device.DeviceNumber = req.DeviceNumber
 	if req.Name == "" {
-		req.Name = uuid.New()[0:8]
+		req.Name = uuid.NewString()[0:8]
 	}
 	device.Name = &req.Name
 	device.ActivateFlag = "active"
@@ -1957,9 +1957,9 @@ func (*Device) GatewayRegister(req model.GatewayRegisterReq) (model.GatewayRegis
 
 	// device model.Device
 	result := model.GatewayRegisterRes{
-		MqttUsername: uuid.New()[0:22],
-		MqttPassword: uuid.New()[0:7],
-		MqttClientId: uuid.New(),
+		MqttUsername: uuid.NewString()[0:22],
+		MqttPassword: uuid.NewString()[0:7],
+		MqttClientId: uuid.NewString(),
 	}
 	t := time.Now().UTC()
 
@@ -2014,7 +2014,7 @@ func (*Device) GatewayDeviceRegister(req model.DeviceRegisterReq) (model.DeviceR
 		}
 		subDeviceItem := model.Device{}
 
-		subDeviceItem.ID = uuid.New()
+		subDeviceItem.ID = uuid.NewString()
 		deviceConfigId := dal.GetDeviceConfigIdByName(v.Model)
 		if deviceConfigId == nil || *deviceConfigId == "" {
 			deviceConfigId = nil
@@ -2022,11 +2022,11 @@ func (*Device) GatewayDeviceRegister(req model.DeviceRegisterReq) (model.DeviceR
 		subDeviceItem.DeviceConfigID = deviceConfigId
 		subDeviceItem.ParentID = &req.DeviceId
 		subDeviceItem.Name = &v.Model
-		subDeviceItem.Voucher = `{"username":"` + uuid.New() + `"}`
+		subDeviceItem.Voucher = `{"username":"` + uuid.NewString() + `"}`
 		subDeviceItem.TenantID = device.TenantID
 		subDeviceItem.CreatedAt = &t
 		subDeviceItem.UpdateAt = &t
-		subDeviceItem.DeviceNumber = uuid.New()
+		subDeviceItem.DeviceNumber = uuid.NewString()
 		subDeviceItem.IsOnline = 1
 		subDeviceItem.ActivateFlag = "active"
 		subDeviceItem.SubDeviceAddr = &v.SubAddr

@@ -8,7 +8,7 @@ import (
 	config "project/mqtt"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -28,7 +28,7 @@ func CreateMqttClient() {
 	opts.AddBroker(config.MqttConfig.Broker)
 	opts.SetUsername(config.MqttConfig.User)
 	opts.SetPassword(config.MqttConfig.Pass)
-	opts.SetClientID("thingspanel-go-pub-" + uuid.New()[0:8])
+	opts.SetClientID("thingspanel-go-pub-" + uuid.NewString()[0:8])
 	// 干净会话
 	opts.SetCleanSession(true)
 	// 恢复客户端订阅，需要broker支持

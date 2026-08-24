@@ -8,7 +8,7 @@ import (
 	"project/pkg/errcode"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -23,7 +23,7 @@ func (*Dict) CreateDictColumn(createDictReq *model.CreateDictReq, claims *utils.
 
 	var dict = model.SysDict{}
 
-	dict.ID = uuid.New()
+	dict.ID = uuid.NewString()
 	dict.DictCode = createDictReq.DictCode
 	dict.DictValue = createDictReq.DictValue
 	dict.CreatedAt = time.Now().UTC()
@@ -57,7 +57,7 @@ func (*Dict) CreateDictLanguage(createDictLanguage *model.CreateDictLanguageReq,
 	// 创建 sys_dict_language
 	var dictLanguage = model.SysDictLanguage{}
 
-	dictLanguage.ID = uuid.New()
+	dictLanguage.ID = uuid.NewString()
 	dictLanguage.DictID = createDictLanguage.DictId
 	dictLanguage.LanguageCode = createDictLanguage.LanguageCode
 	dictLanguage.Translation = createDictLanguage.Translation

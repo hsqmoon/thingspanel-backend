@@ -8,7 +8,7 @@ import (
 	"project/pkg/errcode"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,7 +18,7 @@ func (*UiElements) CreateUiElements(CreateUiElementsReq *model.CreateUiElementsR
 
 	var UiElements = model.SysUIElement{}
 
-	UiElements.ID = uuid.New()
+	UiElements.ID = uuid.NewString()
 	UiElements.ParentID = CreateUiElementsReq.ParentID
 	UiElements.ElementCode = CreateUiElementsReq.ElementCode
 	UiElements.ElementType = int16(CreateUiElementsReq.ElementType)

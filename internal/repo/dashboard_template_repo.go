@@ -8,7 +8,7 @@ import (
 	"project/internal/model"
 	"project/pkg/global"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -44,7 +44,7 @@ func (r *DashboardTemplateRepo) CreateTemplateWithBindings(
 	bindings []*model.LocalDashboardTemplateBinding,
 ) error {
 	now := time.Now().UTC()
-	template.ID = uuid.New()
+	template.ID = uuid.NewString()
 	template.CreatedAt = now
 	template.UpdatedAt = now
 	template.DownloadedAt = now
@@ -54,7 +54,7 @@ func (r *DashboardTemplateRepo) CreateTemplateWithBindings(
 			return fmt.Errorf("create local dashboard template: %w", err)
 		}
 		for _, binding := range bindings {
-			binding.ID = uuid.New()
+			binding.ID = uuid.NewString()
 			binding.DashboardTemplateID = template.ID
 			binding.CreatedAt = now
 			binding.UpdatedAt = now
@@ -257,7 +257,7 @@ func (r *DashboardTemplateRepo) CreateInstance(
 	ctx context.Context,
 	instance *model.LocalDashboardTemplateInstance,
 ) error {
-	instance.ID = uuid.New()
+	instance.ID = uuid.NewString()
 	instance.CreatedAt = time.Now().UTC()
 	return global.DB.WithContext(ctx).Create(instance).Error
 }

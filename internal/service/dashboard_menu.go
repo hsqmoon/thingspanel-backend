@@ -9,7 +9,7 @@ import (
 	"project/pkg/errcode"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -76,7 +76,7 @@ func (*DashboardMenu) UpsertTenantDashboardMenu(claims *utils.UserClaims, dashbo
 
 	now := time.Now().UTC()
 	menu := model.TenantDashboardMenu{
-		ID:            uuid.New(),
+		ID:            uuid.NewString(),
 		TenantID:      claims.TenantID,
 		DashboardID:   dashboardID,
 		DashboardName: dashboardName,

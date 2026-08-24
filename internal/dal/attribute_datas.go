@@ -4,7 +4,7 @@ import (
 	model "project/internal/model"
 	query "project/internal/query"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -84,7 +84,7 @@ func UpdateAttributeData(data *model.AttributeData) (*model.AttributeData, error
 		return nil, err
 	} else if result.RowsAffected == 0 {
 		// 数据不存在，创建新记录
-		data.ID = uuid.New()
+		data.ID = uuid.NewString()
 		err = query.AttributeData.Create(data)
 		if err != nil {
 			return nil, err

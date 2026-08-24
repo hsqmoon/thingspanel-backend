@@ -22,7 +22,7 @@ import (
 	"project/pkg/errcode"
 	"project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/mintance/go-uniqid"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -588,7 +588,7 @@ func (*TelemetryData) ServeEchoData(req *model.ServeEchoDataReq, clientIP string
 	}
 	post = accessAddressList[1]
 	topic := config.MqttConfig.Telemetry.SubscribeTopic
-	clientID = "mqtt_" + uuid.New()[0:12] // 代表随机生成
+	clientID = "mqtt_" + uuid.NewString()[0:12] // 代表随机生成
 	payload = `{\"test_data1\":25.5,\"test_data2\":60}`
 	// 拼接命令
 	command := utils.BuildMosquittoPubCommand(host, post, username, password, topic, payload, clientID)
@@ -671,7 +671,7 @@ func (*TelemetryData) GetSimulationInit(deviceId string) (*model.SimulationInitR
 	}
 
 	// 生成随机客户端ID
-	clientID := "mqtt_" + uuid.New()[0:12]
+	clientID := "mqtt_" + uuid.NewString()[0:12]
 
 	// 生成6位随机数字
 	randNum := fmt.Sprintf("%06d", rand.Intn(1000000))
@@ -767,7 +767,7 @@ func (*TelemetryData) SimulationSend(req *model.SimulationSendReq) error {
 	}
 
 	// 生成客户端ID
-	clientID := "mqtt_" + uuid.New()[0:12]
+	clientID := "mqtt_" + uuid.NewString()[0:12]
 
 	// 发送 MQTT 消息
 	logrus.Debugf("SimulationSend: host=%s, port=%s, topic=%s, data=%s", host, port, topic, req.Data)
@@ -1306,7 +1306,7 @@ func (t *TelemetryData) TelemetryPutMessage(ctx context.Context, userID string, 
 	// 步骤6: 先创建日志记录（状态为初始）
 	// ---------------------------------------------
 	description := "下发遥测日志记录"
-	logID := uuid.New()
+	logID := uuid.NewString()
 	logInfo := &model.TelemetrySetLog{
 		ID:            logID,
 		DeviceID:      param.DeviceID,

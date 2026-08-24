@@ -17,7 +17,7 @@ import (
 	"project/internal/model"
 	"project/pkg/common"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -319,7 +319,7 @@ func (a *Automate) ActiveSceneExecute(scene_id, tenantID string) error {
 	}
 	logrus.Debug(details)
 	return dal.SceneLogInsert(&model.SceneLog{
-		ID:              uuid.New(),
+		ID:              uuid.NewString(),
 		SceneID:         scene_id,
 		ExecutedAt:      time.Now().UTC(),
 		Detail:          details,

@@ -10,7 +10,7 @@ import (
 	"project/internal/query"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -23,7 +23,7 @@ func CreateSceneInfo(req model.CreateSceneReq, claims *utils.UserClaims) (string
 	sceneInfo := model.SceneInfo{}
 
 	t := time.Now().UTC()
-	sceneInfo.ID = uuid.New()
+	sceneInfo.ID = uuid.NewString()
 
 	sceneInfo.Name = req.Name
 	sceneInfo.Description = &req.Description
@@ -40,7 +40,7 @@ func CreateSceneInfo(req model.CreateSceneReq, claims *utils.UserClaims) (string
 
 	for _, v := range req.Actions {
 		sceneAction := model.SceneActionInfo{}
-		sceneAction.ID = uuid.New()
+		sceneAction.ID = uuid.NewString()
 		sceneAction.SceneID = sceneInfo.ID
 		sceneAction.ActionTarget = v.ActionTarget
 		sceneAction.ActionType = v.ActionType
@@ -102,7 +102,7 @@ func UpdateSceneInfo(req model.UpdateSceneReq, claims *utils.UserClaims) (string
 
 	for _, v := range req.Actions {
 		sceneAction := model.SceneActionInfo{}
-		sceneAction.ID = uuid.New()
+		sceneAction.ID = uuid.NewString()
 		sceneAction.SceneID = req.ID
 		sceneAction.ActionTarget = v.ActionTarget
 		sceneAction.ActionType = v.ActionType

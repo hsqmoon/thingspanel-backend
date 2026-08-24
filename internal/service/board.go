@@ -12,7 +12,7 @@ import (
 	"project/pkg/errcode"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,7 +24,7 @@ func (*Board) CreateBoard(ctx context.Context, CreateBoardReq *model.CreateBoard
 		db    = dal.BoardQuery{}
 	)
 
-	board.ID = uuid.New()
+	board.ID = uuid.NewString()
 	board.Name = CreateBoardReq.Name
 	if CreateBoardReq.Config != nil && !IsJSON(*CreateBoardReq.Config) {
 		return nil, errcode.NewWithMessage(errcode.CodeParamError, "config is not a valid JSON")
@@ -110,7 +110,7 @@ func (*Board) UpdateBoard(ctx context.Context, UpdateBoardReq *model.UpdateBoard
 		if board.HomeFlag == "" {
 			board.HomeFlag = "N"
 		}
-		board.ID = uuid.New()
+		board.ID = uuid.NewString()
 		board.TenantID = UpdateBoardReq.TenantID
 		board.VisType = UpdateBoardReq.VisType
 		// 没有id则新增，但是需要判断是否有首页看板，如果有则不允许新增

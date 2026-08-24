@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"project/internal/dal"
 	"project/initialize"
+	"project/internal/dal"
 	model "project/internal/model"
 	"project/pkg/errcode"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -23,7 +23,7 @@ type Alarm struct{}
 func (*Alarm) CreateAlarmConfig(req *model.CreateAlarmConfigReq) (data *model.AlarmConfig, err error) {
 	data = &model.AlarmConfig{}
 	t := time.Now().UTC()
-	data.ID = uuid.New()
+	data.ID = uuid.NewString()
 	data.Name = req.Name
 	data.Description = req.Description
 	data.AlarmLevel = req.AlarmLevel
@@ -280,7 +280,7 @@ Details: %s`,
 		}
 	}
 
-	id := uuid.New()
+	id := uuid.NewString()
 	t := time.Now().UTC()
 	err = dal.CreateAlarmInfo(&model.AlarmInfo{
 		ID:               id,
@@ -308,7 +308,7 @@ func (*Alarm) AlarmRecovery(alarmConfigID, content, scene_automation_id, group_i
 	}
 
 	device_ids_str, _ := json.Marshal(device_ids)
-	id := uuid.New()
+	id := uuid.NewString()
 	t := time.Now().UTC()
 	err = dal.AlarmHistorySave(&model.AlarmHistory{
 		ID:                id,
@@ -342,7 +342,7 @@ func (*Alarm) AlarmExecute(alarmConfigID, content, scene_automation_id, group_id
 		return false, alarmName, "告警配置未启用"
 	}
 	alarmName = alarmConfig.Name
-	id := uuid.New()
+	id := uuid.NewString()
 	if alarmConfig.NotificationGroupID != "" {
 		// 组装标准的通知内容
 		subject := fmt.Sprintf("[ALERT] %s [%s]", alarmConfig.Name, alarmConfig.AlarmLevel)

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 )
 
 // mosquitto_pub -h xx.xx.xx.xx -p 1883 -t "devices/telemetry" -m "{\"tems\":112}" -u "xxxxx" -P "xxxxx" -i "0"
@@ -69,7 +69,7 @@ func ParseMosquittoPubCommand(command string) (*MQTTParams, error) {
 	clientId := f.String("i", "", "客户端ID")
 
 	if *clientId == "" || *clientId == "0" {
-		c := "mosquitto_pub_" + uuid.New()[0:8]
+		c := "mosquitto_pub_" + uuid.NewString()[0:8]
 		clientId = &c
 	}
 	err := f.Parse(args)

@@ -7,7 +7,7 @@ import (
 	"project/pkg/errcode"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,7 +27,7 @@ func (s *SceneAutomation) CreateSceneAutomation(req *model.CreateSceneAutomation
 
 	// 写入 scene_automations
 	sceneAutomation := model.SceneAutomation{}
-	sceneAutomation.ID = uuid.New()
+	sceneAutomation.ID = uuid.NewString()
 
 	scene_automation_id = sceneAutomation.ID
 
@@ -52,7 +52,7 @@ func (s *SceneAutomation) CreateSceneAutomation(req *model.CreateSceneAutomation
 	}
 
 	for _, v := range req.TriggerConditionGroups {
-		groupId := uuid.New()
+		groupId := uuid.NewString()
 		var (
 			oneCondition      bool
 			multipleCondition bool
@@ -68,7 +68,7 @@ func (s *SceneAutomation) CreateSceneAutomation(req *model.CreateSceneAutomation
 				}
 				// 写入 device_trigger_condition
 				dtc := model.DeviceTriggerCondition{}
-				dtc.ID = uuid.New()
+				dtc.ID = uuid.NewString()
 				dtc.SceneAutomationID = scene_automation_id
 				dtc.Enabled = req.Enabled
 				dtc.GroupID = groupId
@@ -95,7 +95,7 @@ func (s *SceneAutomation) CreateSceneAutomation(req *model.CreateSceneAutomation
 			case "20":
 				// 写入 one_time_tasks
 				ott := model.OneTimeTask{}
-				ott.ID = uuid.New()
+				ott.ID = uuid.NewString()
 				ott.SceneAutomationID = scene_automation_id
 				if v2.ExecutionTime != nil {
 					ott.ExecutionTime = *v2.ExecutionTime
@@ -123,7 +123,7 @@ func (s *SceneAutomation) CreateSceneAutomation(req *model.CreateSceneAutomation
 			case "21":
 				// 写入periodic_tasks
 				pt := model.PeriodicTask{}
-				pt.ID = uuid.New()
+				pt.ID = uuid.NewString()
 				pt.SceneAutomationID = scene_automation_id
 				if v2.TaskType != nil {
 					pt.TaskType = *v2.TaskType
@@ -165,7 +165,7 @@ func (s *SceneAutomation) CreateSceneAutomation(req *model.CreateSceneAutomation
 	for _, v := range req.Actions {
 		// 写入 action_info
 		actionInfo := model.ActionInfo{}
-		actionInfo.ID = uuid.New()
+		actionInfo.ID = uuid.NewString()
 		actionInfo.SceneAutomationID = scene_automation_id
 		actionInfo.ActionTarget = &v.ActionTarget
 		actionInfo.ActionType = v.ActionType
@@ -554,7 +554,7 @@ func (*SceneAutomation) UpdateSceneAutomation(req *model.UpdateSceneAutomationRe
 	}
 
 	for _, v := range req.TriggerConditionGroups {
-		groupId := uuid.New()
+		groupId := uuid.NewString()
 		var (
 			oneCondition      bool
 			multipleCondition bool
@@ -570,7 +570,7 @@ func (*SceneAutomation) UpdateSceneAutomation(req *model.UpdateSceneAutomationRe
 			case "10", "11", "22":
 				// 写入 device_trigger_condition
 				dtc := model.DeviceTriggerCondition{}
-				dtc.ID = uuid.New()
+				dtc.ID = uuid.NewString()
 				dtc.SceneAutomationID = scene_automation_id
 				dtc.Enabled = req.Enabled
 				dtc.GroupID = groupId
@@ -597,7 +597,7 @@ func (*SceneAutomation) UpdateSceneAutomation(req *model.UpdateSceneAutomationRe
 			case "20":
 				// 写入 one_time_tasks
 				ott := model.OneTimeTask{}
-				ott.ID = uuid.New()
+				ott.ID = uuid.NewString()
 				ott.SceneAutomationID = scene_automation_id
 				if v2.ExecutionTime != nil {
 					ott.ExecutionTime = *v2.ExecutionTime
@@ -626,7 +626,7 @@ func (*SceneAutomation) UpdateSceneAutomation(req *model.UpdateSceneAutomationRe
 			case "21":
 				// 写入periodic_tasks
 				pt := model.PeriodicTask{}
-				pt.ID = uuid.New()
+				pt.ID = uuid.NewString()
 				pt.SceneAutomationID = scene_automation_id
 				if v2.TaskType != nil {
 					pt.TaskType = *v2.TaskType
@@ -666,7 +666,7 @@ func (*SceneAutomation) UpdateSceneAutomation(req *model.UpdateSceneAutomationRe
 	for _, v := range req.Actions {
 		// 写入 action_info
 		actionInfo := model.ActionInfo{}
-		actionInfo.ID = uuid.New()
+		actionInfo.ID = uuid.NewString()
 		actionInfo.SceneAutomationID = scene_automation_id
 		actionInfo.ActionTarget = &v.ActionTarget
 		actionInfo.ActionType = v.ActionType

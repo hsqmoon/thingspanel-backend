@@ -13,7 +13,7 @@ import (
 	utils "project/pkg/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -109,7 +109,7 @@ func saveOperationLog(c *gin.Context, start time.Time, cost int64, requestMsg, r
 	path := c.Request.URL.Path
 
 	log := &model.OperationLog{
-		ID:              uuid.New(),
+		ID:              uuid.NewString(),
 		IP:              c.ClientIP(),
 		Path:            &path,
 		UserID:          userClaims.ID,

@@ -4,7 +4,7 @@ package service
 import (
 	"time"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
 	"project/internal/dal"
@@ -43,7 +43,7 @@ func (o *OpenAPIKey) CreateOpenAPIKey(req *model.CreateOpenAPIKeyReq, claims *ut
 	status := int16(1) // 默认启用
 	// 创建OpenAPI密钥记录
 	key := &model.OpenAPIKey{
-		ID:        uuid.New(),
+		ID:        uuid.NewString(),
 		TenantID:  req.TenantID,
 		APIKey:    apikey,
 		Status:    &status,

@@ -10,7 +10,7 @@ import (
 	utils "project/pkg/utils"
 	"time"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -63,7 +63,7 @@ func (e *ExpectedData) Create(ctx context.Context, req *model.CreateExpectedData
 	}
 	// 创建预期数据
 	ed := &model.ExpectedData{
-		ID:         uuid.New(),
+		ID:         uuid.NewString(),
 		DeviceID:   req.DeviceID,
 		SendType:   req.SendType,
 		Payload:    *req.Payload,

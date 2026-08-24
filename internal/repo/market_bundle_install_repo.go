@@ -9,7 +9,7 @@ import (
 	"project/internal/model"
 	"project/pkg/global"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 )
 
 // MarketBundleInstallRepo handles database operations for market bundle installations
@@ -21,7 +21,7 @@ func NewMarketBundleInstallRepo() *MarketBundleInstallRepo {
 
 // CreateInstallation creates a new installation record
 func (r *MarketBundleInstallRepo) CreateInstallation(ctx context.Context, inst *model.MarketBundleInstallation) (*model.MarketBundleInstallation, error) {
-	inst.ID = uuid.New()
+	inst.ID = uuid.NewString()
 	if err := global.DB.WithContext(ctx).Create(inst).Error; err != nil {
 		return nil, fmt.Errorf("failed to create installation: %w", err)
 	}
@@ -145,7 +145,7 @@ func (r *MarketBundleInstallRepo) UpdateWarnings(ctx context.Context, id string,
 
 // CreateResourceMapping creates a new resource mapping
 func (r *MarketBundleInstallRepo) CreateResourceMapping(ctx context.Context, mapping *model.MarketResourceMapping) (*model.MarketResourceMapping, error) {
-	mapping.ID = uuid.New()
+	mapping.ID = uuid.NewString()
 	if err := global.DB.WithContext(ctx).Create(mapping).Error; err != nil {
 		return nil, fmt.Errorf("failed to create resource mapping: %w", err)
 	}
@@ -192,7 +192,7 @@ func (r *MarketBundleInstallRepo) UpdateResourceMappingStatus(ctx context.Contex
 
 // CreateBindingStatus creates a new binding status record
 func (r *MarketBundleInstallRepo) CreateBindingStatus(ctx context.Context, binding *model.MarketBundleBindingStatus) (*model.MarketBundleBindingStatus, error) {
-	binding.ID = uuid.New()
+	binding.ID = uuid.NewString()
 	if err := global.DB.WithContext(ctx).Create(binding).Error; err != nil {
 		return nil, fmt.Errorf("failed to create binding status: %w", err)
 	}
@@ -243,7 +243,7 @@ func (r *MarketBundleInstallRepo) GetBindingByKey(ctx context.Context, installat
 
 // CreateAuditEntry creates a new audit entry
 func (r *MarketBundleInstallRepo) CreateAuditEntry(ctx context.Context, audit *model.MarketInstallationAudit) (*model.MarketInstallationAudit, error) {
-	audit.ID = uuid.New()
+	audit.ID = uuid.NewString()
 	if err := global.DB.WithContext(ctx).Create(audit).Error; err != nil {
 		return nil, fmt.Errorf("failed to create audit entry: %w", err)
 	}

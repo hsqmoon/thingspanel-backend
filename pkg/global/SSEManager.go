@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 )
@@ -49,7 +49,7 @@ func (m *SSEManager) AddClient(tenantID, userID string, writer gin.ResponseWrite
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	clientID := uuid.New()
+	clientID := uuid.NewString()
 
 	if _, ok := m.clients[tenantID]; !ok {
 		m.clients[tenantID] = make(map[string]*SSEClient)

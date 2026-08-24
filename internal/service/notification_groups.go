@@ -8,7 +8,7 @@ import (
 	"project/pkg/errcode"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,7 +27,7 @@ type NotificationGroup struct{}
 //	}
 func (*NotificationGroup) CreateNotificationGroup(createNotificationgroupReq *model.CreateNotificationGroupReq, u *utils.UserClaims) (*model.NotificationGroup, error) {
 	var notificationGroup model.NotificationGroup
-	notificationGroup.ID = uuid.New()
+	notificationGroup.ID = uuid.NewString()
 	notificationGroup.Name = createNotificationgroupReq.Name
 	notificationGroup.NotificationConfig = createNotificationgroupReq.NotificationConfig
 	notificationGroup.NotificationType = createNotificationgroupReq.NotificationType

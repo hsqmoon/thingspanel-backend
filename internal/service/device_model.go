@@ -14,7 +14,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 )
 
 type DeviceModel struct{}
@@ -58,7 +58,7 @@ func (*DeviceModel) CreateDeviceModelGeneral(req model.CreateDeviceModelReq, wha
 	switch what {
 	case model.DEVICE_MODEL_TELEMETRY:
 		var deviceModel model.DeviceModelTelemetry
-		deviceModel.ID = uuid.New()
+		deviceModel.ID = uuid.NewString()
 		deviceModel.DeviceTemplateID = req.DeviceTemplateId
 		deviceModel.DataName = req.DataName
 		deviceModel.DataIdentifier = req.DataIdentifier
@@ -82,7 +82,7 @@ func (*DeviceModel) CreateDeviceModelGeneral(req model.CreateDeviceModelReq, wha
 
 	case model.DEVICE_MODEL_ATTRIBUTES:
 		var deviceModel model.DeviceModelAttribute
-		deviceModel.ID = uuid.New()
+		deviceModel.ID = uuid.NewString()
 		deviceModel.DeviceTemplateID = req.DeviceTemplateId
 		deviceModel.DataName = req.DataName
 		deviceModel.DataIdentifier = req.DataIdentifier
@@ -105,7 +105,7 @@ func (*DeviceModel) CreateDeviceModelGeneral(req model.CreateDeviceModelReq, wha
 		}
 	case model.DEVICE_MODEL_EVENTS:
 		var deviceModel model.DeviceModelEvent
-		deviceModel.ID = uuid.New()
+		deviceModel.ID = uuid.NewString()
 		deviceModel.DeviceTemplateID = req.DeviceTemplateId
 		deviceModel.DataName = req.DataName
 		deviceModel.DataIdentifier = req.DataIdentifier
@@ -126,7 +126,7 @@ func (*DeviceModel) CreateDeviceModelGeneral(req model.CreateDeviceModelReq, wha
 		}
 	case model.DEVICE_MODEL_COMMANDS:
 		var deviceModel model.DeviceModelCommand
-		deviceModel.ID = uuid.New()
+		deviceModel.ID = uuid.NewString()
 		deviceModel.DeviceTemplateID = req.DeviceTemplateId
 		deviceModel.DataName = req.DataName
 		deviceModel.DataIdentifier = req.DataIdentifier
@@ -167,7 +167,7 @@ func (*DeviceModel) CreateDeviceModelGeneralV2(req model.CreateDeviceModelV2Req,
 	switch what {
 	case model.DEVICE_MODEL_EVENTS:
 		var deviceModel model.DeviceModelEvent
-		deviceModel.ID = uuid.New()
+		deviceModel.ID = uuid.NewString()
 		deviceModel.DeviceTemplateID = req.DeviceTemplateId
 		deviceModel.DataName = req.DataName
 		deviceModel.DataIdentifier = req.DataIdentifier
@@ -186,7 +186,7 @@ func (*DeviceModel) CreateDeviceModelGeneralV2(req model.CreateDeviceModelV2Req,
 		}
 	case model.DEVICE_MODEL_COMMANDS:
 		var deviceModel model.DeviceModelCommand
-		deviceModel.ID = uuid.New()
+		deviceModel.ID = uuid.NewString()
 		deviceModel.DeviceTemplateID = req.DeviceTemplateId
 		deviceModel.DataName = req.DataName
 		deviceModel.DataIdentifier = req.DataIdentifier
@@ -470,7 +470,7 @@ func (*DeviceModel) CreateDeviceModelCustomCommands(req model.CreateDeviceModelC
 
 	var deviceModelCustomCommand model.DeviceModelCustomCommand
 
-	deviceModelCustomCommand.ID = uuid.New()
+	deviceModelCustomCommand.ID = uuid.NewString()
 	deviceModelCustomCommand.DeviceTemplateID = req.DeviceTemplateId
 	deviceModelCustomCommand.ButtomName = req.ButtomName
 	deviceModelCustomCommand.DataIdentifier = req.DataIdentifier
@@ -563,7 +563,7 @@ func (*DeviceModel) CreateDeviceModelCustomControl(req model.CreateDeviceModelCu
 
 	var deviceModelCustomControl model.DeviceModelCustomControl
 
-	deviceModelCustomControl.ID = uuid.New()
+	deviceModelCustomControl.ID = uuid.NewString()
 	deviceModelCustomControl.DeviceTemplateID = req.DeviceTemplateId
 	deviceModelCustomControl.Name = req.Name
 	deviceModelCustomControl.ControlType = req.ControlType

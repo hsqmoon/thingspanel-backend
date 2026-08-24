@@ -17,7 +17,7 @@ import (
 	"project/pkg/constant"
 	"project/pkg/errcode"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -40,7 +40,7 @@ func (c *CommandData) CommandPutMessage(ctx context.Context, operatorID string, 
 	}
 
 	// 2. 生成 message_id，8位唯一字符串
-	messageId := uuid.New()[:8]
+	messageId := uuid.NewString()[:8]
 
 	// 3. 获取设备类型和协议类型
 	var deviceType string
@@ -136,7 +136,7 @@ func (c *CommandData) CommandPutMessage(ctx context.Context, operatorID string, 
 func (c *CommandData) createCommandLogForPut(device *model.Device, messageId, identify string, value *string, operationType string) error {
 	status := "0" // pending
 	log := &model.CommandSetLog{
-		ID:            uuid.New(),
+		ID:            uuid.NewString(),
 		DeviceID:      device.ID,
 		OperationType: &operationType,
 		MessageID:     &messageId,

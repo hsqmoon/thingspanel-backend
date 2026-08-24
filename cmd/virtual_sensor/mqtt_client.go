@@ -5,7 +5,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 )
 
 type MqttConfig struct {
@@ -23,7 +23,7 @@ func CreateMqttClient(config MqttConfig) *mqtt.Client {
 	if config.Pass != "" {
 		opts.SetPassword(config.Pass)
 	}
-	opts.SetClientID(uuid.New())
+	opts.SetClientID(uuid.NewString())
 	// 干净会话
 	opts.SetCleanSession(true)
 	opts.SetAutoReconnect(true)

@@ -9,7 +9,7 @@ import (
 	"project/pkg/errcode"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 )
 
 type DeviceTemplate struct{}
@@ -25,7 +25,7 @@ func (*DeviceTemplate) CreateDeviceTemplate(req model.CreateDeviceTemplateReq, c
 
 	var deviceTemplate = model.DeviceTemplate{}
 
-	deviceTemplate.ID = uuid.New()
+	deviceTemplate.ID = uuid.NewString()
 	deviceTemplate.Name = name
 	deviceTemplate.Author = req.Author
 	deviceTemplate.Version = req.Version

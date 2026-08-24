@@ -12,7 +12,7 @@ import (
 	"project/pkg/errcode"
 	"project/third_party/others/http_client"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
@@ -24,7 +24,7 @@ type ServicePlugin struct{}
 func (*ServicePlugin) Create(req *model.CreateServicePluginReq) (map[string]interface{}, error) {
 	var servicePlugin model.ServicePlugin
 	copier.Copy(&servicePlugin, req)
-	servicePlugin.ID = uuid.New()
+	servicePlugin.ID = uuid.NewString()
 	servicePlugin.CreateAt = time.Now().UTC()
 	servicePlugin.UpdateAt = time.Now().UTC()
 	if *servicePlugin.ServiceConfig == "" {

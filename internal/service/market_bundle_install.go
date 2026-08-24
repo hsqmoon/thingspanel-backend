@@ -18,7 +18,7 @@ import (
 	"project/pkg/global"
 	"project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -425,7 +425,7 @@ func (s *MarketBundleInstallService) createDeviceTemplate(ctx context.Context, t
 	now := time.Now().UTC()
 	flag := int16(1) // private
 
-	templateID := uuid.New()
+	templateID := uuid.NewString()
 
 	// Create device template
 	newTemplate := &model.DeviceTemplate{
@@ -460,7 +460,7 @@ func (s *MarketBundleInstallService) createDeviceTemplate(ctx context.Context, t
 		switch field.Kind {
 		case "telemetry":
 			tm := model.DeviceModelTelemetry{
-				ID:               uuid.New(),
+				ID:               uuid.NewString(),
 				DeviceTemplateID: templateID,
 				TenantID:         tenantID,
 				DataName:         &field.Name,
@@ -478,7 +478,7 @@ func (s *MarketBundleInstallService) createDeviceTemplate(ctx context.Context, t
 			}
 		case "attribute":
 			attr := model.DeviceModelAttribute{
-				ID:               uuid.New(),
+				ID:               uuid.NewString(),
 				DeviceTemplateID: templateID,
 				TenantID:         tenantID,
 				DataName:         &field.Name,
@@ -496,7 +496,7 @@ func (s *MarketBundleInstallService) createDeviceTemplate(ctx context.Context, t
 			}
 		case "event":
 			evt := model.DeviceModelEvent{
-				ID:               uuid.New(),
+				ID:               uuid.NewString(),
 				DeviceTemplateID: templateID,
 				TenantID:         tenantID,
 				DataName:         &field.Name,
@@ -511,7 +511,7 @@ func (s *MarketBundleInstallService) createDeviceTemplate(ctx context.Context, t
 			}
 		case "command":
 			cmd := model.DeviceModelCommand{
-				ID:               uuid.New(),
+				ID:               uuid.NewString(),
 				DeviceTemplateID: templateID,
 				TenantID:         tenantID,
 				DataName:         &field.Name,

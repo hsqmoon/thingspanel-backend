@@ -13,7 +13,7 @@ import (
 	"gorm.io/gen"
 	"gorm.io/gorm"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -276,9 +276,9 @@ ORDER BY w.hour_ts ASC;
 	err := global.DB.Raw(sql, tenantID, startTimeUTC, endTimeUTC).Scan(&results).Error
 	if err != nil {
 		logrus.WithError(err).WithFields(logrus.Fields{
-			"tenant_id":  tenantID,
-			"startTime":  startTimeUTC,
-			"endTime":    endTimeUTC,
+			"tenant_id": tenantID,
+			"startTime": startTimeUTC,
+			"endTime":   endTimeUTC,
 		}).Error("GetDeviceTrend query failed")
 		return nil, err
 	}
@@ -295,7 +295,7 @@ func (BoardQuery) CreateDefaultBoard(ctx context.Context, tenantid string) error
 	)
 	// 根据上面sql语句，创建默认首页看板
 	err := board.WithContext(ctx).Create(&model.Board{
-		ID:        uuid.New(),
+		ID:        uuid.NewString(),
 		Name:      "Home",
 		Config:    &config,
 		TenantID:  tenantid,

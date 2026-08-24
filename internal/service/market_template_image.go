@@ -15,7 +15,7 @@ import (
 
 	"project/internal/model"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 )
 
 const (
@@ -99,7 +99,7 @@ func downloadMarketTemplateImage(ctx context.Context, client *MarketClient, cove
 		return "", "", fmt.Errorf("create market cover staging directory: %w", err)
 	}
 
-	fileName := uuid.New() + extension
+	fileName := uuid.NewString() + extension
 	stagingPath := filepath.Join(stagingDir, fileName+".tmp")
 	finalPath := filepath.Join(finalDir, fileName)
 	if err := os.WriteFile(stagingPath, data, 0644); err != nil {

@@ -22,7 +22,7 @@ import (
 	global "project/pkg/global"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
@@ -40,7 +40,7 @@ func (u *User) CreateUser(createUserReq *model.CreateUserReq, claims *utils.User
 
 	user := model.User{}
 	// uuid生成用户id
-	user.ID = uuid.New()
+	user.ID = uuid.NewString()
 	user.Name = createUserReq.Name
 	user.PhoneNumber = createUserReq.PhoneNumber
 	user.Email = createUserReq.Email
@@ -68,7 +68,7 @@ func (u *User) CreateUser(createUserReq *model.CreateUserReq, claims *utils.User
 	switch claims.Authority {
 	case "SYS_ADMIN": // 系统管理员创建租户管理员
 		user.Authority = StringPtr("TENANT_ADMIN")
-		user.TenantID = StringPtr(strings.Split(uuid.New(), "-")[0])
+		user.TenantID = StringPtr(strings.Split(uuid.NewString(), "-")[0])
 	case "TENANT_ADMIN": // 租户管理员创建租户用户
 		user.Authority = StringPtr("TENANT_USER")
 		a, err := u.GetUserById(claims.ID)
@@ -866,7 +866,7 @@ func (u *User) EmailRegister(ctx context.Context, req *model.EmailRegisterReq) (
 
 	// 构建用户信息
 	userInfo := &model.User{
-		ID:                  uuid.New(),
+		ID:                  uuid.NewString(),
 		Name:                &req.Email,
 		PhoneNumber:         fmt.Sprintf("%s %s", req.PhonePrefix, req.PhoneNumber),
 		Email:               req.Email,
@@ -988,7 +988,7 @@ func (u *User) InitSuperAdmin(ctx context.Context, req *model.SuperAdminInitReq)
 
 	// 构建超管用户信息
 	userInfo := &model.User{
-		ID:                  uuid.New(),
+		ID:                  uuid.NewString(),
 		Name:                &requestEmail,
 		Email:               requestEmail,
 		Status:              StringPtr("N"),

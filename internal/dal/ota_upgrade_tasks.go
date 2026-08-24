@@ -9,7 +9,7 @@ import (
 	query "project/internal/query"
 	global "project/pkg/global"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -19,7 +19,7 @@ func CreateOTAUpgradeTaskWithDetail(req *model.CreateOTAUpgradeTaskReq) (string,
 	var taskDetail = []*model.OtaUpgradeTaskDetail{}
 
 	t := time.Now().UTC()
-	taskId := uuid.New()
+	taskId := uuid.NewString()
 
 	task.ID = taskId
 	task.Name = req.Name
@@ -30,7 +30,7 @@ func CreateOTAUpgradeTaskWithDetail(req *model.CreateOTAUpgradeTaskReq) (string,
 
 	for _, v := range req.DeviceIdList {
 		detail := &model.OtaUpgradeTaskDetail{}
-		detail.ID = uuid.New()
+		detail.ID = uuid.NewString()
 		detail.DeviceID = v
 		detail.Status = 1
 		detail.UpdatedAt = &t

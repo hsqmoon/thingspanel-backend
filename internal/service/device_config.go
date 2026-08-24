@@ -17,14 +17,14 @@ import (
 	model "project/internal/model"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
 type DeviceConfig struct{}
 
 func (*DeviceConfig) CreateDeviceConfig(req *model.CreateDeviceConfigReq, claims *utils.UserClaims) (deviceconfig model.DeviceConfig, err error) {
-	deviceconfig.ID = uuid.New()
+	deviceconfig.ID = uuid.NewString()
 	deviceconfig.Name = req.Name
 	deviceconfig.Description = req.Description
 	deviceconfig.DeviceConnType = req.DeviceConnType
@@ -58,7 +58,7 @@ func (*DeviceConfig) CreateDeviceConfig(req *model.CreateDeviceConfigReq, claims
 	deviceconfig.CreatedAt = t
 	deviceconfig.UpdatedAt = t
 	deviceconfig.TenantID = claims.TenantID
-	deviceconfig.TemplateSecret = StringPtr(uuid.New())
+	deviceconfig.TemplateSecret = StringPtr(uuid.NewString())
 
 	err = dal.CreateDeviceConfig(&deviceconfig)
 	if err != nil {

@@ -15,7 +15,7 @@ import (
 	utils "project/pkg/utils"
 	"project/third_party/others/http_client"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/gomail.v2"
 )
@@ -25,7 +25,7 @@ type NotificationServicesConfig struct{}
 // 统一的通知历史记录保存方法
 func (n *NotificationServicesConfig) saveNotificationHistory(notificationType, tenantID, target, content, status string, remark *string) error {
 	history := &model.NotificationHistory{
-		ID:               uuid.New(),
+		ID:               uuid.NewString(),
 		SendTime:         time.Now().UTC(),
 		SendContent:      &content,
 		SendTarget:       target,
@@ -65,7 +65,7 @@ func (n *NotificationServicesConfig) sendWebhookMessage(payloadURL, secret, aler
 	cleanJson := strings.TrimSpace(buffer.String()) // 去掉encoder.Encode添加的换行符
 
 	// 创建PENDING记录
-	historyID := uuid.New()
+	historyID := uuid.NewString()
 	pendingStatus := "PENDING"
 	history := &model.NotificationHistory{
 		ID:               historyID,
@@ -289,7 +289,7 @@ func (*NotificationServicesConfig) SaveNotificationServicesConfig(req *model.Sav
 	}
 
 	if c == nil {
-		config.ID = uuid.New()
+		config.ID = uuid.NewString()
 	} else {
 		config.ID = c.ID
 	}

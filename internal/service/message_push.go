@@ -11,7 +11,7 @@ import (
 	"project/internal/model"
 	"time"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
@@ -28,7 +28,7 @@ func (receiver *MessagePush) CreateMessagePush(req *model.CreateMessagePushReq, 
 		return dal.ActiveMessagePushMange(userId, req.PushId, req.DeviceType)
 	}
 	return dal.CreateMessagePushMange(&model.MessagePushManage{
-		ID:         uuid.New(),
+		ID:         uuid.NewString(),
 		UserID:     userId,
 		PushID:     req.PushId,
 		DeviceType: req.DeviceType,
@@ -122,7 +122,7 @@ func (receiver *MessagePush) MessagePushSendAndLog(message model.MessagePushSend
 	res, err := receiver.MessagePushSend(message)
 	contents, _ := json.Marshal(message)
 	log := model.MessagePushLog{
-		ID:          uuid.New(),
+		ID:          uuid.NewString(),
 		UserID:      mange.UserID,
 		MessageType: messageType,
 		Content:     string(contents),

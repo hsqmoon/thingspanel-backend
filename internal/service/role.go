@@ -8,7 +8,7 @@ import (
 	model "project/internal/model"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,7 +18,7 @@ func (*Role) CreateRole(createRoleReq *model.CreateRoleReq, userClaims *utils.Us
 
 	var role = model.Role{}
 
-	role.ID = uuid.New()
+	role.ID = uuid.NewString()
 	role.Name = createRoleReq.Name
 	role.Description = createRoleReq.Description
 

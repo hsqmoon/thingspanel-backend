@@ -13,7 +13,7 @@ import (
 	utils "project/pkg/utils"
 	"project/third_party/others/http_client"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/jinzhu/copier"
 	"github.com/sirupsen/logrus"
 )
@@ -23,7 +23,7 @@ type ServiceAccess struct{}
 func (*ServiceAccess) CreateAccess(req *model.CreateAccessReq, userClaims *utils.UserClaims) (map[string]interface{}, error) {
 	var serviceAccess model.ServiceAccess
 	copier.Copy(&serviceAccess, req)
-	serviceAccess.ID = uuid.New()
+	serviceAccess.ID = uuid.NewString()
 	serviceAccess.TenantID = userClaims.TenantID
 	if *serviceAccess.ServiceAccessConfig == "" {
 		*serviceAccess.ServiceAccessConfig = "{}"

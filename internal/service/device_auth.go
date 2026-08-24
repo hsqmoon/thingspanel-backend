@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
 	"project/internal/dal"
@@ -72,7 +72,7 @@ func (*DeviceAuth) Auth(req *model.DeviceAuthReq) (*model.DeviceAuthRes, error) 
 	if device == nil {
 		// 创建新设备
 		device = &model.Device{
-			ID:             uuid.New(),
+			ID:             uuid.NewString(),
 			DeviceNumber:   req.DeviceNumber,
 			CreatedAt:      &t,
 			UpdateAt:       &t,
@@ -126,14 +126,14 @@ func (*DeviceAuth) Auth(req *model.DeviceAuthReq) (*model.DeviceAuthRes, error) 
 		if deviceConfig.ProtocolType != nil && *deviceConfig.ProtocolType == "MQTT" {
 			// 如果voucher_type为ACCESSTOKEN
 			if deviceConfig.VoucherType != nil && *deviceConfig.VoucherType == "ACCESSTOKEN" {
-				device.Voucher = `{"username":"` + uuid.New() + `"}`
+				device.Voucher = `{"username":"` + uuid.NewString() + `"}`
 			} else if deviceConfig.VoucherType != nil && *deviceConfig.VoucherType == "BASIC" {
-				device.Voucher = `{"username":"` + uuid.New() + `","password":"` + uuid.New()[0:7] + `"}`
+				device.Voucher = `{"username":"` + uuid.NewString() + `","password":"` + uuid.NewString()[0:7] + `"}`
 			} else {
-				device.Voucher = `{"username":"` + uuid.New() + `"}`
+				device.Voucher = `{"username":"` + uuid.NewString() + `"}`
 			}
 		} else {
-			device.Voucher = `{"voucher":"` + uuid.New() + `"}`
+			device.Voucher = `{"voucher":"` + uuid.NewString() + `"}`
 		}
 
 		// 创建设备

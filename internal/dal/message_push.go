@@ -7,7 +7,7 @@ import (
 	"project/internal/query"
 	"time"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -58,7 +58,7 @@ func SetMessagePushConfig(req *model.MessagePushConfigReq) error {
 	config, err := query.MessagePushConfig.Where(query.MessagePushConfig.ConfigType.Eq(1)).First()
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return query.MessagePushConfig.Create(&model.MessagePushConfig{
-			ID:         uuid.New(),
+			ID:         uuid.NewString(),
 			URL:        req.Url,
 			ConfigType: 1,
 			CreateTime: time.Now(),

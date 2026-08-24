@@ -13,7 +13,7 @@ import (
 	global "project/pkg/global"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -36,7 +36,7 @@ func DelDataScriptCache(data_script *model.DataScript) error {
 }
 
 func (*DataScript) CreateDataScript(req *model.CreateDataScriptReq) (data_script model.DataScript, err error) {
-	data_script.ID = uuid.New()
+	data_script.ID = uuid.NewString()
 	data_script.Name = req.Name
 	data_script.Description = req.Description
 	data_script.DeviceConfigID = req.DeviceConfigId

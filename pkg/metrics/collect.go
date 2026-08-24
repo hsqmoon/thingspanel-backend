@@ -13,7 +13,7 @@ import (
 
 	"project/pkg/global"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
@@ -59,7 +59,7 @@ func GetPersistentInstanceID() string {
 	}
 
 	// 2. 如果没有，生成一个
-	instanceID := uuid.New()
+	instanceID := uuid.NewString()
 
 	// 保存到文件
 	_ = os.MkdirAll(filepath.Dir(idPath), 0755)

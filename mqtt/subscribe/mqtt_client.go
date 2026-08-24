@@ -8,7 +8,7 @@ import (
 	config "project/mqtt"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -52,7 +52,7 @@ func subscribeMqttClient() {
 	opts.AddBroker(config.MqttConfig.Broker)
 	opts.SetUsername(config.MqttConfig.User)
 	opts.SetPassword(config.MqttConfig.Pass)
-	id := "thingspanel-go-sub-" + uuid.New()[0:8]
+	id := "thingspanel-go-sub-" + uuid.NewString()[0:8]
 	opts.SetClientID(id)
 	logrus.Info("clientid: ", id)
 

@@ -8,7 +8,7 @@ import (
 	"project/pkg/errcode"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 )
 
 type DeviceGroup struct{}
@@ -21,7 +21,7 @@ type TreeNode struct {
 func (*DeviceGroup) CreateDeviceGroup(req model.CreateDeviceGroupReq, claims *utils.UserClaims) error {
 	var deviceGroup = model.Group{}
 	t := time.Now().UTC()
-	deviceGroup.ID = uuid.New()
+	deviceGroup.ID = uuid.NewString()
 
 	// 处理子分组创建
 	if req.ParentId != nil && *req.ParentId != "0" {

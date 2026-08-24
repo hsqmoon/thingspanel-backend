@@ -14,7 +14,7 @@ import (
 	"project/pkg/errcode"
 	"project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -168,7 +168,7 @@ func (s *DashboardTemplateService) ensureDeviceTemplateConfigs(
 			protocolConfig = string(payload)
 		}
 
-		configID := uuid.New()
+		configID := uuid.NewString()
 		configName := deviceTemplate.Name + " 默认配置"
 		deviceConnType := "A"
 		now := time.Now().UTC()

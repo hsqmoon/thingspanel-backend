@@ -13,7 +13,7 @@ import (
 	"project/pkg/global"
 	"project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -85,7 +85,7 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 		templateID = existingTpl.ID
 		isUpdate = true
 	} else {
-		templateID = uuid.New()
+		templateID = uuid.NewString()
 		isUpdate = false
 	}
 
@@ -151,7 +151,7 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 				for _, t := range ts {
 					if m, ok := t.(map[string]interface{}); ok {
 						created := model.DeviceModelTelemetry{
-							ID:               uuid.New(),
+							ID:               uuid.NewString(),
 							DeviceTemplateID: templateID,
 							TenantID:         claims.TenantID,
 							DataName:         getStrP(m, "data_name"),
@@ -161,8 +161,8 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 							Unit:             getStrP(m, "unit"),
 							Description:      getStrP(m, "description"),
 							AdditionalInfo:   getStrP(m, "additional_info"),
-							CreatedAt:       now,
-							UpdatedAt:       now,
+							CreatedAt:        now,
+							UpdatedAt:        now,
 						}
 						if err := tx.Create(&created).Error; err != nil {
 							tx.Rollback()
@@ -181,7 +181,7 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 				for _, a := range attrs {
 					if m, ok := a.(map[string]interface{}); ok {
 						created := model.DeviceModelAttribute{
-							ID:               uuid.New(),
+							ID:               uuid.NewString(),
 							DeviceTemplateID: templateID,
 							TenantID:         claims.TenantID,
 							DataName:         getStrP(m, "data_name"),
@@ -191,8 +191,8 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 							Unit:             getStrP(m, "unit"),
 							Description:      getStrP(m, "description"),
 							AdditionalInfo:   getStrP(m, "additional_info"),
-							CreatedAt:       now,
-							UpdatedAt:       now,
+							CreatedAt:        now,
+							UpdatedAt:        now,
 						}
 						if err := tx.Create(&created).Error; err != nil {
 							tx.Rollback()
@@ -211,16 +211,16 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 				for _, e := range evts {
 					if m, ok := e.(map[string]interface{}); ok {
 						created := model.DeviceModelEvent{
-							ID:               uuid.New(),
+							ID:               uuid.NewString(),
 							DeviceTemplateID: templateID,
 							TenantID:         claims.TenantID,
 							DataName:         getStrP(m, "data_name"),
 							DataIdentifier:   getStr(m, "data_identifier"),
-							Param:           getStrP(m, "params"),
+							Param:            getStrP(m, "params"),
 							Description:      getStrP(m, "description"),
 							AdditionalInfo:   getStrP(m, "additional_info"),
-							CreatedAt:       now,
-							UpdatedAt:       now,
+							CreatedAt:        now,
+							UpdatedAt:        now,
 						}
 						if err := tx.Create(&created).Error; err != nil {
 							tx.Rollback()
@@ -239,16 +239,16 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 				for _, c := range cmds {
 					if m, ok := c.(map[string]interface{}); ok {
 						created := model.DeviceModelCommand{
-							ID:               uuid.New(),
+							ID:               uuid.NewString(),
 							DeviceTemplateID: templateID,
 							TenantID:         claims.TenantID,
 							DataName:         getStrP(m, "data_name"),
 							DataIdentifier:   getStr(m, "data_identifier"),
-							Param:           getStrP(m, "params"),
+							Param:            getStrP(m, "params"),
 							Description:      getStrP(m, "description"),
 							AdditionalInfo:   getStrP(m, "additional_info"),
-							CreatedAt:       now,
-							UpdatedAt:       now,
+							CreatedAt:        now,
+							UpdatedAt:        now,
 						}
 						if err := tx.Create(&created).Error; err != nil {
 							tx.Rollback()
@@ -263,7 +263,7 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 	}
 
 	// ── 3.3 Create DeviceConfig ──────────────────────────────────────────────
-	dcID := uuid.New()
+	dcID := uuid.NewString()
 	dcName := fullData.Name
 	if fullData.DeviceConfig != nil {
 		if fullData.DeviceConfig.Name != "" {
@@ -275,7 +275,7 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 		ID:               dcID,
 		Name:             dcName,
 		DeviceTemplateID: &templateID, // 引用新创建的 DeviceTemplate
-		DeviceType:       "1",        // 默认直连设备
+		DeviceType:       "1",         // 默认直连设备
 		TenantID:         claims.TenantID,
 		ImageURL:         localImageURL,
 		CreatedAt:        now,

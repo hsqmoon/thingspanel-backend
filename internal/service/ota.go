@@ -16,7 +16,7 @@ import (
 	global "project/pkg/global"
 	utils "project/pkg/utils"
 
-	"github.com/go-basic/uuid"
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,7 +24,7 @@ type OTA struct{}
 
 func (*OTA) CreateOTAUpgradePackage(req *model.CreateOTAUpgradePackageReq, tenantID string) (string, error) {
 	var ota = model.OtaUpgradePackage{}
-	ota.ID = uuid.New()
+	ota.ID = uuid.NewString()
 	ota.Name = req.Name
 	ota.Version = req.Version
 	ota.TargetVersion = req.TargetVersion
