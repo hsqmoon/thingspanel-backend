@@ -13,6 +13,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+const telemetryInsertBatchSize = 4000
+
 // telemetryWriter 遥测数据批量写入器
 type telemetryWriter struct {
 	db      *gorm.DB
@@ -257,21 +259,25 @@ func (w *telemetryWriter) batchInsert(historyData []TelemetryData, currentData [
 	// 使用事务同时写入历史表和最新值表
 	err := w.db.Transaction(func(tx *gorm.DB) error {
 		// 插入历史表 - 遇到重复键则忽略（DO NOTHING）
-		if err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "device_id"}, {Name: "key"}, {Name: "ts"}},
-			DoNothing: true,
-		}).Create(&historyData).Error; err != nil {
-			return fmt.Errorf("insert history data failed: %w", err)
+		if len(historyData) > 0 {
+			if err := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "device_id"}, {Name: "key"}, {Name: "ts"}},
+				DoNothing: true,
+			}).CreateInBatches(&historyData, telemetryInsertBatchSize).Error; err != nil {
+				return fmt.Errorf("insert history data failed: %w", err)
+			}
 		}
 
 		// 插入最新值表 - 遇到重复键则更新（DO UPDATE）
-		if err := tx.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "device_id"}, {Name: "key"}},
-			DoUpdates: clause.AssignmentColumns([]string{
-				"ts", "bool_v", "number_v", "string_v", "tenant_id",
-			}),
-		}).Create(&currentData).Error; err != nil {
-			return fmt.Errorf("insert current data failed: %w", err)
+		if len(currentData) > 0 {
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "device_id"}, {Name: "key"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"ts", "bool_v", "number_v", "string_v", "tenant_id",
+				}),
+			}).CreateInBatches(&currentData, telemetryInsertBatchSize).Error; err != nil {
+				return fmt.Errorf("insert current data failed: %w", err)
+			}
 		}
 
 		return nil
@@ -308,6 +314,10 @@ func (w *telemetryWriter) batchInsert(historyData []TelemetryData, currentData [
 
 // fallbackInsert 逐条插入兜底（批量失败时使用）
 func (w *telemetryWriter) fallbackInsert(historyData []TelemetryData, currentData []TelemetryCurrentData) (written, failed int) {
+	currentByKey := make(map[string]*TelemetryCurrentData, len(currentData))
+	for i := range currentData {
+		currentByKey[currentData[i].DeviceID+"|"+currentData[i].Key] = &currentData[i]
+	}
 	for i := range historyData {
 		// 逐条使用事务插入
 		err := w.db.Transaction(func(tx *gorm.DB) error {
@@ -319,14 +329,16 @@ func (w *telemetryWriter) fallbackInsert(historyData []TelemetryData, currentDat
 				return err
 			}
 
-			// 插入最新值表
-			if err := tx.Clauses(clause.OnConflict{
-				Columns: []clause.Column{{Name: "device_id"}, {Name: "key"}},
-				DoUpdates: clause.AssignmentColumns([]string{
-					"ts", "bool_v", "number_v", "string_v", "tenant_id",
-				}),
-			}).Create(&currentData[i]).Error; err != nil {
-				return err
+			// 历史数据可能包含同一设备键的多个时间点，最新值切片不会与其等长。
+			if current := currentByKey[historyData[i].DeviceID+"|"+historyData[i].Key]; current != nil {
+				if err := tx.Clauses(clause.OnConflict{
+					Columns: []clause.Column{{Name: "device_id"}, {Name: "key"}},
+					DoUpdates: clause.AssignmentColumns([]string{
+						"ts", "bool_v", "number_v", "string_v", "tenant_id",
+					}),
+				}).Create(current).Error; err != nil {
+					return err
+				}
 			}
 
 			return nil
