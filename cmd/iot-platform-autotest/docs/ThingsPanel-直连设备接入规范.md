@@ -215,7 +215,7 @@
   "params": {
     "version": "1.1",
     "size": 432945,
-    "url": "http://dev.thingspane.cn/files/ota/s121jg3245gg.zip",
+    "url": "https://iot.nsnr.chat/files/ota/s121jg3245gg.zip",
     "signMethod": "Md5",
     "sign": "a243fgh4b9v",
     "module": "MCU",
