@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -27,6 +28,36 @@ func TestTenantBusinessPath(t *testing.T) {
 		if got := isTenantBusinessPath(tt.path); got != tt.want {
 			t.Fatalf("isTenantBusinessPath(%q) = %v, want %v", tt.path, got, tt.want)
 		}
+	}
+}
+
+func TestTenantResourceIDs(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	request := httptest.NewRequest(
+		http.MethodPut,
+		"/api/v1/device/group/relation?group_id=group-query-id",
+		bytes.NewBufferString(`{"id":"body-id","device_id_list":["device-a","device-b"],"name":"ignored"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	context.Request = request
+
+	ids, err := tenantResourceIDs(context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"relation":       true,
+		"group-query-id": true,
+		"body-id":        true,
+		"device-a":       true,
+		"device-b":       true,
+	}
+	for _, id := range ids {
+		delete(want, id)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing ids: %v; got %v", want, ids)
 	}
 }
 
