@@ -41,7 +41,9 @@ func GetDeviceModelCustomCommandsByPage(page model.GetDeviceModelListByPageReq, 
 	var count int64
 	q := query.DeviceModelCustomCommand
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantID))
+	if tenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantID))
+	}
 	queryBuilder = queryBuilder.Where(q.DeviceTemplateID.Eq(page.DeviceTemplateId))
 	if page.EnableStatus != nil {
 		queryBuilder = queryBuilder.Where(q.EnableStatus.Eq(*page.EnableStatus))

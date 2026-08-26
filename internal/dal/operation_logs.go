@@ -26,7 +26,10 @@ func GetListByPage(operationLog *model.GetOperationLogListByPageReq, userClaims 
 	// 	queryBuilder = q.WithContext(context.Background()).Where(q.TenantID.Eq(operationLog.TenantID))
 
 	// }
-	queryBuilder = q.WithContext(context.Background()).Where(q.TenantID.Eq(userClaims.TenantID))
+	queryBuilder = q.WithContext(context.Background())
+	if userClaims.TenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(userClaims.TenantID))
+	}
 	if operationLog.IP != nil && *operationLog.IP != "" {
 		queryBuilder = queryBuilder.Where(q.IP.Like(fmt.Sprintf("%%%s%%", *operationLog.IP)))
 	}

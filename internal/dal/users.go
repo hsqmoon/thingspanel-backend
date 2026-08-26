@@ -316,6 +316,13 @@ func GetUserListByPage(userListReq *model.UserListReq, claims *utils.UserClaims)
 	return GetUserListByPageWithAddress(userListReq, claims)
 }
 
+func TenantExists(tenantID string) (bool, error) {
+	count, err := query.User.WithContext(context.Background()).
+		Where(query.User.Authority.Eq(TENANT_ADMIN), query.User.TenantID.Eq(tenantID)).
+		Count()
+	return count > 0, err
+}
+
 func GetUserListByPageWithAddress(userListReq *model.UserListReq, claims *utils.UserClaims) (int64, interface{}, error) {
 	q := query.User
 	qa := query.UserAddress

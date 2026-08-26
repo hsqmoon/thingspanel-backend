@@ -53,7 +53,9 @@ func GetBoardListByPage(boards *model.GetBoardListByPageReq, tenantId string) (i
 	q := query.Board
 	var count int64
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantId))
+	if tenantId != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantId))
+	}
 
 	if boards.Name != nil && *boards.Name != "" {
 		queryBuilder = queryBuilder.Where(q.Name.Like(fmt.Sprintf("%%%s%%", *boards.Name)))

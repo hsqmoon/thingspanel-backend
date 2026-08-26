@@ -29,7 +29,9 @@ func GetServiceAccessListByPage(req *model.GetServiceAccessByPageReq, tenantID s
 	q := query.ServiceAccess
 	queryBuilder := q.WithContext(context.Background())
 	queryBuilder = queryBuilder.Where(q.ServicePluginID.Eq(req.ServicePluginID))
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantID))
+	if tenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantID))
+	}
 
 	count, err := queryBuilder.Count()
 	if err != nil {

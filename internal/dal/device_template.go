@@ -81,7 +81,9 @@ func GetDeviceTemplateListByPage(req *model.GetDeviceTemplateListByPageReq, clai
 	if req.Name != nil {
 		queryBuilder = queryBuilder.Where(q.Name.Like(fmt.Sprintf("%%%s%%", *req.Name)))
 	}
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(claims.TenantID))
+	if claims.TenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(claims.TenantID))
+	}
 	count, err := queryBuilder.Count()
 	if err != nil {
 		logrus.Error(err)
@@ -109,9 +111,11 @@ func GetDeviceTemplateMenu(req *model.GetDeviceTemplateMenuReq, claims *utils.Us
 	if req.Name != nil {
 		queryBuilder = queryBuilder.Where(q.Name.Like(fmt.Sprintf("%%%s%%", *req.Name)))
 	}
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(claims.TenantID))
+	if claims.TenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(claims.TenantID))
+	}
 	var data []map[string]interface{}
-	err := queryBuilder.Select(q.ID, q.Name).Order(q.CreatedAt.Desc()).Scan(&data)
+	err := queryBuilder.Select(q.ID, q.Name, q.TenantID).Order(q.CreatedAt.Desc()).Scan(&data)
 	if err != nil {
 		logrus.Error("queryBuilder.Find error: ", err)
 	}
@@ -180,7 +184,10 @@ func GetDeviceTemplateSelector(req *model.GetDeviceTemplateSelectorReq, tenantID
 	ctx := context.Background()
 	q := query.DeviceTemplate
 
-	queryBuilder := q.WithContext(ctx).Where(q.TenantID.Eq(tenantID))
+	queryBuilder := q.WithContext(ctx)
+	if tenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantID))
+	}
 
 	// 物模型ID精确查询
 	if req.DeviceTemplateID != nil && *req.DeviceTemplateID != "" {

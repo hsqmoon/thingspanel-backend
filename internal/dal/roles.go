@@ -53,7 +53,9 @@ func GetRoleListByPage(data *model.GetRoleListByPageReq, tenantID string) (int64
 	var dataList interface{}
 	queryBuilder := q.WithContext(context.Background())
 
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantID))
+	if tenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantID))
+	}
 	if data.Name != nil && *data.Name != "" {
 		queryBuilder = queryBuilder.Where(q.Name.Like(fmt.Sprintf("%%%s%%", *data.Name)))
 	}

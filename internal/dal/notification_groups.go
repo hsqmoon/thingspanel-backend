@@ -85,7 +85,9 @@ func GetNotificationGroupListByPage(notifications *model.GetNotificationGroupLis
 		queryBuilder = queryBuilder.Where(q.Status.Eq(*notifications.Status))
 	}
 
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(u.TenantID))
+	if u.TenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(u.TenantID))
+	}
 
 	count, err := queryBuilder.Count()
 	if err != nil {

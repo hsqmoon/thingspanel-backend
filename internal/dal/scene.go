@@ -166,7 +166,9 @@ func GetSceneInfoByPage(req *model.GetSceneListByPageReq, tenant_id string) (int
 		queryBuilder = queryBuilder.Where(q.Name.Like(fmt.Sprintf("%%%s%%", *req.Name)))
 	}
 
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	if tenant_id != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	}
 
 	count, err := queryBuilder.Count()
 	if err != nil {

@@ -13,7 +13,9 @@ func GetSceneAutomationLog(req *model.GetSceneAutomationLogReq, tenantId string)
 	q := query.SceneAutomationLog
 	queryBuilder := q.WithContext(context.Background())
 	queryBuilder = queryBuilder.Where(q.SceneAutomationID.Eq(req.SceneAutomationId))
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantId))
+	if tenantId != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantId))
+	}
 
 	if req.ExecutionResult != nil {
 		queryBuilder = queryBuilder.Where(q.ExecutionResult.Eq(*req.ExecutionResult))

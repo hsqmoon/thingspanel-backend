@@ -78,7 +78,9 @@ func GetAlarmConfigListByPage(d *model.GetAlarmConfigListByPageReq) (int64, inte
 	q := query.AlarmConfig
 	var count int64
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(d.TenantID))
+	if d.TenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(d.TenantID))
+	}
 	if d.Name != nil && *d.Name != "" {
 		queryBuilder = queryBuilder.Where(q.Name.Like(fmt.Sprintf("%%%s%%", *d.Name)))
 	}
@@ -157,7 +159,9 @@ func GetAlarmInfoListByPage(d *model.GetAlarmInfoListByPageReq) (int64, interfac
 	q := query.AlarmInfo
 	var count int64
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(d.TenantID))
+	if d.TenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(d.TenantID))
+	}
 	if d.StartTime != nil && d.EndTime != nil {
 		queryBuilder = queryBuilder.Where(q.AlarmTime.Between(*d.StartTime, *d.EndTime))
 	}
@@ -199,7 +203,9 @@ func GetAlarmHistoryListByPage(d *model.GetAlarmHisttoryListByPage, tenantID str
 	q := query.AlarmHistory
 	var count int64
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantID))
+	if tenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantID))
+	}
 
 	if d.StartTime != nil && d.EndTime != nil && !d.StartTime.IsZero() && !d.EndTime.IsZero() {
 		queryBuilder = queryBuilder.Where(q.CreateAt.Between(*d.StartTime, *d.EndTime))

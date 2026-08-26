@@ -307,10 +307,12 @@ func GetDeviceListByPage(req *model.GetDeviceListByPageReq, tenant_id string) (i
 		count      int64
 		deviceList = []model.GetDeviceListByPageRsp{}
 		builder    = q.WithContext(ctx).
-				Where(q.TenantID.Eq(tenant_id)).
 				Where(q.ActivateFlag.Eq("active")).
 				LeftJoin(c, c.ID.EqCol(q.DeviceConfigID))
 	)
+	if tenant_id != "" {
+		builder = builder.Where(q.TenantID.Eq(tenant_id))
+	}
 	if hasValue(req.GroupId) {
 		groupIds, err := GetGroupChildrenIds(strings.TrimSpace(*req.GroupId))
 		if err != nil {
@@ -423,6 +425,7 @@ func GetDeviceListByPage(req *model.GetDeviceListByPageReq, tenant_id string) (i
 	t2 := query.TelemetryCurrentData.As("t2")
 	err = builder.Select(
 		q.ID,
+		q.TenantID,
 		q.DeviceNumber,
 		q.Name,
 		q.DeviceConfigID,

@@ -129,6 +129,7 @@ func RouterInit() *gin.Engine {
 
 		// 需要权限校验
 		v1.Use(middleware.JWTAuth())
+		v1.Use(middleware.TenantScope())
 
 		// 需要权限校验
 		v1.Use(middleware.CasbinRBAC())

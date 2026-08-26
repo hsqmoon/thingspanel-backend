@@ -99,7 +99,9 @@ func GetDeviceConfigListByPage(deviceconfig *model.GetDeviceConfigListByPageReq,
 	var data []model.DeviceConfigRsp
 	var deviceconfigList []*model.DeviceConfig
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(claims.TenantID))
+	if claims.TenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(claims.TenantID))
+	}
 
 	if deviceconfig.DeviceTemplateId != nil && *deviceconfig.DeviceTemplateId != "" {
 		queryBuilder = queryBuilder.Where(q.DeviceTemplateID.Eq(*deviceconfig.DeviceTemplateId))
@@ -147,7 +149,9 @@ func GetDeviceConfigListByPage(deviceconfig *model.GetDeviceConfigListByPageReq,
 func GetDeviceConfigSelectList(deviceConfigName *string, tenantID string, deviceType *string, protocolType *string) (any, error) {
 	q := query.DeviceConfig
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantID))
+	if tenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantID))
+	}
 	if deviceConfigName != nil {
 		queryBuilder = queryBuilder.Where(q.Name.Like(fmt.Sprintf("%%%s%%", *deviceConfigName)))
 	}
@@ -158,7 +162,7 @@ func GetDeviceConfigSelectList(deviceConfigName *string, tenantID string, device
 		queryBuilder = queryBuilder.Where(q.ProtocolType.Eq(*protocolType))
 	}
 	var data []map[string]interface{}
-	err := queryBuilder.Select(q.ID, q.Name).Order(q.CreatedAt.Desc()).Scan(&data)
+	err := queryBuilder.Select(q.ID, q.Name, q.TenantID).Order(q.CreatedAt.Desc()).Scan(&data)
 	if err != nil {
 		logrus.Error(err)
 		return nil, err

@@ -63,6 +63,7 @@ type ActiveDeviceReq struct {
 
 type GetDeviceListByPageReq struct {
 	PageReq
+	TenantID          *string `json:"tenant_id" form:"tenant_id" validate:"omitempty,max=36"`
 	ActivateFlag      *string `json:"activate_flag" form:"activate_flag" validate:"omitempty,max=36"`           // 激活状态
 	DeviceNumber      *string `json:"device_number" form:"device_number" validate:"omitempty,max=36"`           // 设备编号
 	IsEnabled         *string `json:"is_enabled" form:"is_enabled" validate:"omitempty,max=36"`                 // 是否启用
@@ -86,6 +87,7 @@ type GetDeviceListByPageReq struct {
 
 type GetDeviceListByPageRsp struct {
 	ID               string     `json:"id"`                 // 设备ID
+	TenantID         string     `json:"tenant_id"`          // 所属租户
 	DeviceNumber     string     `json:"device_number"`      // 设备编号
 	Name             string     `json:"name"`               // 设备名称
 	DeviceConfigID   string     `json:"device_config_id"`   // 设备配置ID

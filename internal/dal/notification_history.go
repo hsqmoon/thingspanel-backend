@@ -1,28 +1,30 @@
 package dal
-	
+
 import (
 	"context"
 	"fmt"
-	
+
 	model "project/internal/model"
 	query "project/internal/query"
-	
+
 	"github.com/sirupsen/logrus"
 )
-	
+
 func GetNotificationHisoryListByPage(notifications *model.GetNotificationHistoryListByPageReq) (int64, []*model.NotificationHistory, error) {
 	q := query.NotificationHistory
 	var count int64
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(notifications.TenantID))
+	if notifications.TenantID != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(notifications.TenantID))
+	}
 	if notifications.NotificationType != nil && *notifications.NotificationType != "" {
 		queryBuilder = queryBuilder.Where(q.NotificationType.Like(fmt.Sprintf("%%%s%%", *notifications.NotificationType)))
 	}
-	
+
 	if notifications.SendTarget != nil && *notifications.SendTarget != "" {
 		queryBuilder = queryBuilder.Where(q.SendTarget.Eq(*notifications.SendTarget))
 	}
-	
+
 	if notifications.SendTimeStart != nil && notifications.SendTimeStop != nil {
 		queryBuilder = queryBuilder.Where(q.SendTime.Between(*notifications.SendTimeStart, *notifications.SendTimeStop))
 	}

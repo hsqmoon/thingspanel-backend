@@ -102,7 +102,9 @@ func UpdateDeviceModelCommand(d *model.DeviceModelCommand) (err error) {
 func GetDeviceModelTelemetryListByPage(r model.GetDeviceModelListByPageReq, tenant_id string) (count int64, data []*model.DeviceModelTelemetry, err error) {
 	q := query.DeviceModelTelemetry
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	if tenant_id != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	}
 	queryBuilder = queryBuilder.Where(q.DeviceTemplateID.Eq(r.DeviceTemplateId))
 	count, err = queryBuilder.Count()
 	if err != nil {
@@ -124,7 +126,9 @@ func GetDeviceModelTelemetryListByPage(r model.GetDeviceModelListByPageReq, tena
 func GetDeviceModelAttributesListByPage(r model.GetDeviceModelListByPageReq, tenant_id string) (count int64, data []*model.DeviceModelAttribute, err error) {
 	q := query.DeviceModelAttribute
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	if tenant_id != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	}
 	queryBuilder = queryBuilder.Where(q.DeviceTemplateID.Eq(r.DeviceTemplateId))
 	count, err = queryBuilder.Count()
 	if err != nil {
@@ -146,7 +150,9 @@ func GetDeviceModelAttributesListByPage(r model.GetDeviceModelListByPageReq, ten
 func GetDeviceModelEventsListByPage(r model.GetDeviceModelListByPageReq, tenant_id string) (count int64, data []*model.DeviceModelEvent, err error) {
 	q := query.DeviceModelEvent
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	if tenant_id != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	}
 	queryBuilder = queryBuilder.Where(q.DeviceTemplateID.Eq(r.DeviceTemplateId))
 	count, err = queryBuilder.Count()
 	if err != nil {
@@ -168,7 +174,9 @@ func GetDeviceModelEventsListByPage(r model.GetDeviceModelListByPageReq, tenant_
 func GetDeviceModelCommandsListByPage(r model.GetDeviceModelListByPageReq, tenant_id string) (count int64, data []*model.DeviceModelCommand, err error) {
 	q := query.DeviceModelCommand
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	if tenant_id != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	}
 	queryBuilder = queryBuilder.Where(q.DeviceTemplateID.Eq(r.DeviceTemplateId))
 	count, err = queryBuilder.Count()
 	if err != nil {

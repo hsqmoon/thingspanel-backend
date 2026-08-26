@@ -85,7 +85,9 @@ func GetSceneAutomationByPage(req *model.GetSceneAutomationByPageReq, tenant_id 
 		queryBuilder = queryBuilder.Where(q.ID.In(sceneIds...))
 	}
 
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	if tenant_id != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	}
 
 	count, err := queryBuilder.Count()
 	if err != nil {
@@ -139,7 +141,10 @@ func GetSceneAutomationWithAlarmByPageReq(req *model.GetSceneAutomationsWithAlar
 		return count, nil, nil
 	}
 
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id), q.ID.In(sceneIds...))
+	queryBuilder = queryBuilder.Where(q.ID.In(sceneIds...))
+	if tenant_id != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenant_id))
+	}
 	count, err = queryBuilder.Count()
 	if err != nil {
 		logrus.Error(err)

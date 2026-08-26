@@ -42,7 +42,9 @@ func GetDeviceGroupListByPage(req model.GetDeviceGroupsListByPageReq, tenantId s
 	var count int64
 	var groupList interface{}
 	queryBuilder := q.WithContext(context.Background())
-	queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantId))
+	if tenantId != "" {
+		queryBuilder = queryBuilder.Where(q.TenantID.Eq(tenantId))
+	}
 	if req.Name != nil && *req.Name != "" {
 		queryBuilder = queryBuilder.Where(q.Name.Like(fmt.Sprintf("%%%s%%", *req.Name)))
 	}
@@ -72,7 +74,11 @@ func GetDeviceGroupListByPage(req model.GetDeviceGroupsListByPageReq, tenantId s
 }
 
 func GetDeviceGroupAll(tenantId string) ([]*model.Group, error) {
-	g, err := query.Group.Where(query.Group.TenantID.Eq(tenantId)).Order(query.Group.CreatedAt.Desc()).Find()
+	queryBuilder := query.Group.WithContext(context.Background())
+	if tenantId != "" {
+		queryBuilder = queryBuilder.Where(query.Group.TenantID.Eq(tenantId))
+	}
+	g, err := queryBuilder.Order(query.Group.CreatedAt.Desc()).Find()
 	if err != nil {
 		logrus.Error(err)
 		return nil, err

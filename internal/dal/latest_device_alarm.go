@@ -14,9 +14,11 @@ func (q *LatestDeviceAlarmQuery) CountDevicesByTenantAndStatus(ctx context.Conte
 	lda := query.LatestDeviceAlarm
 
 	// 查询指定状态的设备数量，alarm_status不等于N
-	count, err := lda.WithContext(ctx).
-		Where(lda.TenantID.Eq(tenantID)).
-		Where(lda.AlarmStatus.Neq("N")).
+	queryBuilder := lda.WithContext(ctx).Where(lda.AlarmStatus.Neq("N"))
+	if tenantID != "" {
+		queryBuilder = queryBuilder.Where(lda.TenantID.Eq(tenantID))
+	}
+	count, err := queryBuilder.
 		Distinct(lda.DeviceID).
 		Count()
 
