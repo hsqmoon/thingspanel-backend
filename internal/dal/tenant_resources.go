@@ -107,3 +107,55 @@ func FindForeignTenantResource(ids []string, tenantID string) (resourceType stri
 	}
 	return result.ResourceType, result.ResourceID, result.ResourceID != "", nil
 }
+
+func FindTenantResourceScope(ids []string) (tenantID string, found bool, mixed bool, err error) {
+	uniqueIDs := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+	}
+	if len(uniqueIDs) == 0 {
+		return "", false, false, nil
+	}
+
+	values := make([]string, len(uniqueIDs))
+	args := make([]interface{}, 0, len(uniqueIDs))
+	for i, id := range uniqueIDs {
+		values[i] = "(?)"
+		args = append(args, id)
+	}
+
+	queries := make([]string, 0, len(tenantResourceTables))
+	for _, table := range tenantResourceTables {
+		idExpression := "t.id"
+		if table.uuidID {
+			idExpression = "t.id::text"
+		}
+		queries = append(queries, fmt.Sprintf(
+			`SELECT t.tenant_id::text AS tenant_id FROM "%s" t JOIN requested r ON %s = r.id WHERE t.tenant_id IS NOT NULL AND t.tenant_id <> ''`,
+			table.name,
+			idExpression,
+		))
+	}
+
+	queryText := "WITH requested(id) AS (VALUES " + strings.Join(values, ",") + ") " +
+		"SELECT DISTINCT tenant_id FROM (" + strings.Join(queries, " UNION ALL ") + ") resources LIMIT 2"
+	var tenants []struct {
+		TenantID string `gorm:"column:tenant_id"`
+	}
+	if err = global.DB.Raw(queryText, args...).Scan(&tenants).Error; err != nil {
+		return "", false, false, err
+	}
+	if len(tenants) == 0 {
+		return "", false, false, nil
+	}
+	return tenants[0].TenantID, true, len(tenants) > 1, nil
+}

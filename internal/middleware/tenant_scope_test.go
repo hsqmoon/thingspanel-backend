@@ -47,7 +47,6 @@ func TestTenantResourceIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]bool{
-		"relation":       true,
 		"group-query-id": true,
 		"body-id":        true,
 		"device-a":       true,

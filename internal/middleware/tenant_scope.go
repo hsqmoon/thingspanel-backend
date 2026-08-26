@@ -46,6 +46,24 @@ var tenantBusinessPrefixes = []string{
 	"/api/v1/telemetry",
 }
 
+var staticTenantPathSegments = map[string]struct{}{
+	"api": {}, "v1": {}, "alarm": {}, "config": {}, "info": {}, "history": {}, "device": {}, "counts": {},
+	"attribute": {}, "datas": {}, "board": {}, "home": {}, "trend": {}, "tenant": {}, "user": {}, "casbin": {},
+	"function": {}, "dashboard-menu": {}, "data_script": {}, "quiz": {}, "enable": {}, "datapolicy": {},
+	"device_config": {}, "menu": {}, "batch": {}, "connect": {}, "voucher_type": {}, "metrics": {}, "condition": {},
+	"active": {}, "detail": {}, "check": {}, "list": {}, "son": {}, "add": {}, "form": {}, "update": {},
+	"sub-list": {}, "sub-remove": {}, "map": {}, "telemetry": {}, "online": {}, "status": {}, "debug": {},
+	"logs": {}, "service": {}, "access": {}, "selector": {}, "latest": {}, "topic-mappings": {}, "template": {},
+	"market": {}, "login": {}, "refresh": {}, "publish": {}, "install": {}, "bundles": {}, "dashboard-bundles": {},
+	"publish-draft": {}, "download": {}, "installations": {}, "retry": {}, "compensate": {}, "bindings": {},
+	"dashboard-templates": {}, "compatible-devices": {}, "instances": {}, "group": {}, "tree": {}, "relation": {},
+	"model": {}, "source": {}, "at": {}, "attributes": {}, "events": {}, "commands": {}, "custom": {}, "control": {},
+	"event": {}, "expected": {}, "message_push": {}, "logout": {}, "notification_group": {}, "notification_history": {},
+	"notification": {}, "services": {}, "open": {}, "keys": {}, "operation_logs": {}, "ota": {}, "package": {},
+	"task": {}, "protocol_plugin": {}, "role": {}, "scene_automations": {}, "switch": {}, "scene": {}, "log": {},
+	"plugin": {}, "select": {}, "sys_function": {}, "ui_elements": {}, "upload": {}, "file": {},
+}
+
 func TenantScope() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims := c.MustGet("claims").(*utils.UserClaims)
@@ -78,6 +96,22 @@ func TenantScope() gin.HandlerFunc {
 				return
 			}
 			scopedClaims.TenantID = requestedTenantID
+		} else if c.Request.Method == http.MethodGet && isTenantBusinessPath(c.Request.URL.Path) {
+			ids, err := tenantResourceIDs(c)
+			if err != nil {
+				c.Error(errcode.NewWithMessage(errcode.CodeParamError, err.Error()))
+				c.Abort()
+				return
+			}
+			inferredTenantID, found, mixed, err := dal.FindTenantResourceScope(ids)
+			if err != nil {
+				c.Error(err)
+				c.Abort()
+				return
+			}
+			if found && !mixed {
+				scopedClaims.TenantID = inferredTenantID
+			}
 		}
 		c.Set("claims", &scopedClaims)
 
@@ -123,7 +157,7 @@ func tenantResourceIDs(c *gin.Context) ([]string, error) {
 	ids := make([]string, 0, 8)
 	for _, segment := range strings.Split(c.Request.URL.Path, "/") {
 		segment, _ = url.PathUnescape(segment)
-		if len(segment) >= 8 {
+		if _, isStatic := staticTenantPathSegments[segment]; len(segment) >= 8 && !isStatic {
 			ids = append(ids, segment)
 		}
 	}
