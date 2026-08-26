@@ -56,24 +56,22 @@ type SimulationTopicOption struct {
 
 // SimulationInitResp 获取模拟表单初始值响应
 type SimulationInitResp struct {
-	Username          string                  `json:"username"`           // MQTT 用户名
-	Password          string                  `json:"password"`           // MQTT 密码
-	ClientID          string                  `json:"client_id"`          // MQTT 客户端ID
-	Server            string                  `json:"server"`             // MQTT 服务器地址
-	Port              int                     `json:"port"`               // MQTT 端口
-	Topic             string                  `json:"topic"`              // 默认 Topic
-	TopicOptions      []SimulationTopicOption `json:"topic_options"`      // Topic 选择器选项
-	DefaultData       string                  `json:"default_data"`       // 默认模拟数据（遥测/属性用）
-	EventDefaultData  string                  `json:"event_default_data"`  // 事件默认数据
+	Username         string                  `json:"username"`           // MQTT 用户名
+	Password         string                  `json:"password"`           // MQTT 密码
+	ClientID         string                  `json:"client_id"`          // MQTT 客户端ID
+	Server           string                  `json:"server"`             // MQTT 服务器地址
+	Port             int                     `json:"port"`               // MQTT 端口
+	Topic            string                  `json:"topic"`              // 默认 Topic
+	TopicOptions     []SimulationTopicOption `json:"topic_options"`      // Topic 选择器选项
+	DefaultData      string                  `json:"default_data"`       // 默认模拟数据（遥测/属性用）
+	EventDefaultData string                  `json:"event_default_data"` // 事件默认数据
 }
 
 // SimulationSendReq 发送模拟数据请求
 type SimulationSendReq struct {
 	DeviceID string `json:"device_id" form:"device_id" validate:"required,max=36"` // 设备ID
-	Data     string `json:"data" form:"data" validate:"required,max=5000"`          // JSON 格式数据
-	Server   string `json:"server" form:"server" validate:"omitempty,max=255"`        // MQTT 服务器地址
-	Port     *int   `json:"port" form:"port" validate:"omitempty,gte=1,lte=65535"`  // 端口
-	Topic    string `json:"topic" form:"topic" validate:"omitempty,max=255"`         // Topic
+	Data     string `json:"data" form:"data" validate:"required,max=5000"`         // JSON 格式数据
+	Topic    string `json:"topic" form:"topic" validate:"omitempty,max=255"`       // Topic
 }
 
 type GetTelemetryStatisticReq struct {

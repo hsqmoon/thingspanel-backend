@@ -59,6 +59,7 @@ mqtt_server: gmqtt
 mqtt:
   access_address: 47.92.253.145:1883
   broker: 47.92.253.145:1883 # 默认localhost:1883
+  simulation_broker: 127.0.0.1:1883 # 后端模拟上报专用内网入口，不接受浏览器覆盖
   client_id: thingspanel-adapter-dev
   user: root # 默认root
   pass: root # 默认root

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -742,24 +743,15 @@ func (*TelemetryData) SimulationSend(req *model.SimulationSendReq) error {
 	username, _ := voucherMap["username"].(string)
 	password, _ := voucherMap["password"].(string)
 
-	// 确定 MQTT 参数
-	accessAddress := viper.GetString("mqtt.access_address")
-	if accessAddress == "" {
-		return errcode.NewWithMessage(errcode.CodeParamError, "mqtt access_address not configured")
+	// 模拟消息由平台后端发送，固定走容器内 MQTT 入口。禁止接受浏览器传入的
+	// broker 地址，避免公网回环失败及把该接口变成任意网络探测入口。
+	broker := viper.GetString("mqtt.simulation_broker")
+	if broker == "" {
+		broker = viper.GetString("mqtt.broker")
 	}
-	addressParts := strings.Split(accessAddress, ":")
-	host := addressParts[0]
-	port := "1883"
-	if len(addressParts) >= 2 {
-		port = addressParts[1]
-	}
-
-	// 使用请求参数覆盖默认值
-	if req.Server != "" {
-		host = req.Server
-	}
-	if req.Port != nil && *req.Port > 0 {
-		port = strconv.Itoa(*req.Port)
+	host, port, err := net.SplitHostPort(broker)
+	if err != nil || host == "" || port == "" {
+		return errcode.NewWithMessage(errcode.CodeParamError, "mqtt simulation_broker is invalid")
 	}
 	topic := config.MqttConfig.Telemetry.SubscribeTopic
 	if req.Topic != "" {

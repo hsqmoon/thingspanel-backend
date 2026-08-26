@@ -2,9 +2,11 @@ package middleware
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -17,6 +19,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const operationLogMessageLimit = 10000
+
+var (
+	sensitiveAssignmentPattern = regexp.MustCompile(`(?i)((?:password|passwd|pwd|token|api[_-]?key|authorization|voucher|secret|private[_-]?key|credential|jwt)"?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,&}]+)`)
+	bearerTokenPattern         = regexp.MustCompile(`(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+`)
+)
+
 func OperationLogs() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !isModifyMethod(c.Request.Method) {
@@ -25,7 +34,7 @@ func OperationLogs() gin.HandlerFunc {
 		}
 
 		logrus.Info("开始处理请求:", c.Request.URL.Path, "方法:", c.Request.Method)
-		requestMessage, _ := processRequestBody(c)
+		requestMessage := processRequestBody(c)
 		// 对于文件上传请求，不打印完整请求体（包含二进制内容）
 		if !isMultipartRequest(c) {
 			logrus.Info("请求体:", requestMessage)
@@ -42,9 +51,10 @@ func OperationLogs() gin.HandlerFunc {
 
 		logrus.Info("请求处理完成，状态码:", c.Writer.Status(), "耗时(ms):", cost)
 		logrus.Info("响应体大小:", writer.body.Len())
-		logrus.Info("响应的信息:", writer.body.String())
+		responseMessage := redactOperationLogMessage(writer.body.String())
+		logrus.Info("响应的信息:", responseMessage)
 
-		saveOperationLog(c, start, cost, requestMessage, writer.body.String())
+		saveOperationLog(c, start, cost, requestMessage, responseMessage)
 	}
 }
 
@@ -54,29 +64,77 @@ func isModifyMethod(method string) bool {
 		method == http.MethodDelete
 }
 
-func processRequestBody(c *gin.Context) (string, string) {
+func processRequestBody(c *gin.Context) string {
 	// 检查是否是 multipart/form-data 请求（文件上传）
 	if isMultipartRequest(c) {
 		// 对于 multipart 请求，不读取请求体（包含二进制文件内容）
 		// 只记录路径信息，避免消耗请求体导致后续无法读取文件
-		return fmt.Sprintf("[文件上传请求: %s]", c.Request.URL.Path), ""
+		return fmt.Sprintf("[文件上传请求: %s]", c.Request.URL.Path)
 	}
 
 	// 对于普通请求，读取请求体
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		logrus.Error("读取请求体失败:", err)
-		return "", ""
+		return ""
 	}
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
 
-	requestMessage := string(body)
-	// 限制请求体大小，避免记录过大的内容
-	if len(requestMessage) > 10000 {
-		requestMessage = requestMessage[:10000] + "...[内容过长已截断]"
+	return redactOperationLogMessage(string(body))
+}
+
+func redactOperationLogMessage(message string) string {
+	if strings.TrimSpace(message) == "" {
+		return ""
 	}
 
-	return requestMessage, requestMessage
+	var value interface{}
+	if json.Unmarshal([]byte(message), &value) == nil {
+		redactSensitiveValues(value)
+		if encoded, err := json.Marshal(value); err == nil {
+			message = string(encoded)
+		}
+	} else {
+		message = bearerTokenPattern.ReplaceAllString(message, `${1}[REDACTED]`)
+		message = sensitiveAssignmentPattern.ReplaceAllString(message, `${1}"[REDACTED]"`)
+	}
+
+	if len(message) > operationLogMessageLimit {
+		return message[:operationLogMessageLimit] + "...[内容过长已截断]"
+	}
+	return message
+}
+
+func redactSensitiveValues(value interface{}) {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		for key, child := range typed {
+			normalizedKey := strings.Map(func(r rune) rune {
+				if r >= 'A' && r <= 'Z' {
+					return r + ('a' - 'A')
+				}
+				if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+					return r
+				}
+				return -1
+			}, key)
+			if strings.Contains(normalizedKey, "password") || strings.Contains(normalizedKey, "passwd") ||
+				normalizedKey == "pwd" || strings.Contains(normalizedKey, "token") ||
+				strings.Contains(normalizedKey, "apikey") || strings.Contains(normalizedKey, "accesskey") ||
+				strings.Contains(normalizedKey, "authorization") ||
+				strings.Contains(normalizedKey, "voucher") || strings.Contains(normalizedKey, "secret") ||
+				strings.Contains(normalizedKey, "privatekey") || strings.Contains(normalizedKey, "credential") ||
+				normalizedKey == "jwt" {
+				typed[key] = "[REDACTED]"
+				continue
+			}
+			redactSensitiveValues(child)
+		}
+	case []interface{}:
+		for _, child := range typed {
+			redactSensitiveValues(child)
+		}
+	}
 }
 
 // isMultipartRequest 检查是否是 multipart/form-data 请求

@@ -30,8 +30,6 @@ func PublishMessage(host string, port string, topic string, payload string, user
 		return token.Error()
 	}
 	defer c.Disconnect(250)
-	logrus.Debug("username:", username)
-	logrus.Debug("password:", password)
 	logrus.Debug("clientId:", clientId)
 	logrus.Debug("host:", host)
 	logrus.Debug("port:", port)
