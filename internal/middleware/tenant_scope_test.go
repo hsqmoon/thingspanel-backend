@@ -80,6 +80,8 @@ func TestTenantScope(t *testing.T) {
 		{name: "system global write rejected", method: http.MethodPost, path: "/api/v1/device", claims: utils.UserClaims{Authority: "SYS_ADMIN"}, wantCalled: false},
 		{name: "tenant own scope", method: http.MethodGet, path: "/api/v1/device", claims: utils.UserClaims{Authority: "TENANT_ADMIN", TenantID: "tenant-a"}, header: "tenant-a", wantCalled: true, wantTenant: "tenant-a"},
 		{name: "tenant cross scope rejected", method: http.MethodGet, path: "/api/v1/device", claims: utils.UserClaims{Authority: "TENANT_ADMIN", TenantID: "tenant-a"}, header: "tenant-b", wantCalled: false},
+		{name: "tenant user business access rejected", method: http.MethodGet, path: "/api/v1/device", claims: utils.UserClaims{Authority: "TENANT_USER", TenantID: "tenant-a"}, wantCalled: false},
+		{name: "tenant user personal access allowed", method: http.MethodGet, path: "/api/v1/user/detail", claims: utils.UserClaims{Authority: "TENANT_USER", TenantID: "tenant-a"}, wantCalled: true, wantTenant: "tenant-a"},
 	}
 
 	for _, tt := range tests {

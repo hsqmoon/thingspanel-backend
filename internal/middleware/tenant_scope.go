@@ -68,6 +68,11 @@ func TenantScope() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims := c.MustGet("claims").(*utils.UserClaims)
 		requestedTenantID := strings.TrimSpace(c.GetHeader(tenantScopeHeader))
+		if claims.Authority == dal.TENANT_USER && isTenantBusinessPath(c.Request.URL.Path) {
+			c.Error(errcode.NewWithMessage(errcode.CodeNoPermission, "当前普通用户未获租户业务权限"))
+			c.Abort()
+			return
+		}
 
 		if claims.Authority != dal.SYS_ADMIN {
 			if requestedTenantID != "" && requestedTenantID != claims.TenantID {
