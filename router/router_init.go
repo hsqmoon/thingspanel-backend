@@ -26,7 +26,7 @@ import (
 // swagger embed files
 
 func RouterInit() *gin.Engine {
-	// gin.SetMode(gin.ReleaseMode) //开启生产模式
+	gin.SetMode(gin.ReleaseMode)
 	router := gin.Default()
 	// Swagger文档路由
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
