@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"project/initialize"
@@ -29,7 +31,20 @@ import (
 	"gorm.io/gorm"
 )
 
-type Device struct{}
+type deviceBatchNotifier interface {
+	Notify(context.Context, string, string, string) ([]byte, error)
+}
+
+type httpDeviceBatchNotifier struct{}
+
+func (httpDeviceBatchNotifier) Notify(ctx context.Context, messageType, message, host string) ([]byte, error) {
+	return http_client.NotificationWithContext(ctx, messageType, message, host)
+}
+
+type Device struct {
+	batchNotifier   deviceBatchNotifier
+	deliveryRunning atomic.Bool
+}
 
 func (*Device) CreateDevice(req model.CreateDeviceReq, claims *utils.UserClaims) (device model.Device, err error) {
 	t := time.Now().UTC()
@@ -131,107 +146,214 @@ func (*Device) CreateDevice(req model.CreateDeviceReq, claims *utils.UserClaims)
 	return device, err
 }
 
-// 服务接入批量创建设备
-func (*Device) CreateDeviceBatch(req model.BatchCreateDeviceReq, claims *utils.UserClaims) (data any, err error) {
-	t := time.Now().UTC()
-	var deviceList []*model.Device
-	for _, v := range req.DeviceList {
-		if v.DeviceName == "" && v.DeviceNumber == "" && v.DeviceConfigId == "" {
-			continue
-		}
-		// 校验必填字段
-		if v.DeviceNumber == "" {
-			return nil, errcode.WithVars(100005, map[string]interface{}{
-				"field": "device_number",
-			})
-		}
-
-		if v.DeviceConfigId == "" {
-			return nil, errcode.WithVars(100005, map[string]interface{}{
-				"field": "device_config_id",
-			})
-		}
-
-		if v.DeviceName == "" {
-			return nil, errcode.WithVars(100005, map[string]interface{}{
-				"field": "device_name",
-			})
-		}
-
-		// 校验设备号是否存在
-		exists, err := dal.CheckDeviceNumberExists(v.DeviceNumber)
-		if err != nil {
-			return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
-				"sql_error": err.Error(),
-			})
-		}
-		if exists {
-			continue
-		}
-
-		device := model.Device{
-			ID:              uuid.NewString(),
-			Name:            &v.DeviceName,
-			DeviceNumber:    v.DeviceNumber,
-			Voucher:         `{"username":"` + uuid.NewString()[0:22] + `"}`,
-			TenantID:        claims.TenantID,
-			CreatedAt:       &t,
-			UpdateAt:        &t,
-			AccessWay:       StringPtr("B"),
-			Description:     v.Description,
-			DeviceConfigID:  &v.DeviceConfigId,
-			IsOnline:        0,
-			ActivateFlag:    "active",
-			ServiceAccessID: &req.ServiceAccessId,
-		}
-		deviceList = append(deviceList, &device)
+// CreateDeviceBatch validates every local dependency before atomically
+// creating devices and their notification outbox event. A temporary plugin
+// failure is returned as delivery state, never as a false device-create error.
+func (d *Device) CreateDeviceBatch(req model.BatchCreateDeviceReq, claims *utils.UserClaims) (any, error) {
+	if claims == nil || claims.TenantID == "" {
+		return nil, errcode.WithData(errcode.CodeParamError, map[string]interface{}{"field": "tenant_id"})
 	}
-	err = dal.CreateDeviceBatch(deviceList)
+	if len(req.DeviceList) == 0 {
+		return nil, errcode.WithData(errcode.CodeParamError, map[string]interface{}{"field": "device_list"})
+	}
+
+	items := make(map[string]struct {
+		name, configID string
+		description    *string
+	}, len(req.DeviceList))
+	configIDSet := make(map[string]struct{})
+	for _, item := range req.DeviceList {
+		if item.DeviceNumber == "" {
+			return nil, errcode.WithVars(100005, map[string]interface{}{"field": "device_number"})
+		}
+		if item.DeviceConfigId == "" {
+			return nil, errcode.WithVars(100005, map[string]interface{}{"field": "device_config_id"})
+		}
+		if item.DeviceName == "" {
+			return nil, errcode.WithVars(100005, map[string]interface{}{"field": "device_name"})
+		}
+		if _, duplicate := items[item.DeviceNumber]; duplicate {
+			return nil, errcode.WithData(errcode.CodeParamError, map[string]interface{}{
+				"field": "device_number", "error": "duplicate device number in request: " + item.DeviceNumber,
+			})
+		}
+		items[item.DeviceNumber] = struct {
+			name, configID string
+			description    *string
+		}{item.DeviceName, item.DeviceConfigId, item.Description}
+		configIDSet[item.DeviceConfigId] = struct{}{}
+	}
+
+	serviceAccess, err := dal.GetServiceAccessByIDAndTenant(req.ServiceAccessId, claims.TenantID)
 	if err != nil {
-		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
-			"sql_error": err.Error(),
+		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{"sql_error": err.Error()})
+	}
+	servicePlugin, host, err := dal.GetServicePluginHttpAddressByID(serviceAccess.ServicePluginID)
+	if err != nil {
+		return nil, err
+	}
+	configIDs := make([]string, 0, len(configIDSet))
+	for id := range configIDSet {
+		configIDs = append(configIDs, id)
+	}
+	configs, err := dal.GetDeviceConfigsByIDsAndTenant(configIDs, claims.TenantID)
+	if err != nil {
+		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{"sql_error": err.Error()})
+	}
+	if len(configs) != len(configIDs) {
+		return nil, errcode.WithData(errcode.CodeParamError, map[string]interface{}{
+			"field": "device_config_id", "error": "one or more device configurations do not exist in this tenant",
 		})
-	} else {
-		// 发送通知给服务插件
-		// 获取服务接入信息
-		serviceAccess, err := dal.GetServiceAccessByID(req.ServiceAccessId)
-		if err != nil {
-			return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
-				"sql_error": err.Error(),
-				"message":   "create device success, query service access failed",
+	}
+	for _, config := range configs {
+		if config.ProtocolType == nil || *config.ProtocolType != servicePlugin.ServiceIdentifier {
+			return nil, errcode.WithData(errcode.CodeParamError, map[string]interface{}{
+				"field": "device_config_id", "error": "device configuration protocol does not match the service plugin",
 			})
 		}
-		// 查询服务地址
-		_, host, err := dal.GetServicePluginHttpAddressByID(serviceAccess.ServicePluginID)
-		if err != nil {
-			return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
-				"sql_error": err.Error(),
-				"message":   "create device success, query service plugin failed",
-			})
-		}
-		dataMap := make(map[string]interface{})
-		dataMap["service_access_id"] = req.ServiceAccessId
-		// 将dataMap转json字符串
-		dataBytes, err := json.Marshal(dataMap)
-		if err != nil {
-			return nil, errcode.WithData(100004, map[string]interface{}{
-				"message": "create device success, marshal data failed",
-			})
-		}
-		// 通知服务插件
-		logrus.Debug("发送通知给服务插件")
-
-		rsp, err := http_client.Notification("1", string(dataBytes), host)
-		if err != nil {
-			return nil, errcode.WithVars(105001, map[string]interface{}{
-				"error": "create device success, notification failed" + err.Error(),
-			})
-		}
-		logrus.Debug("通知服务插件成功")
-		logrus.Debug(string(rsp))
 	}
 
-	return deviceList, err
+	deviceNumbers := make([]string, 0, len(items))
+	for number := range items {
+		deviceNumbers = append(deviceNumbers, number)
+	}
+	sort.Strings(deviceNumbers)
+	now := time.Now().UTC()
+	devices := make([]*model.Device, 0, len(deviceNumbers))
+	for _, number := range deviceNumbers {
+		item := items[number]
+		name, configID := item.name, item.configID
+		devices = append(devices, &model.Device{
+			ID: uuid.NewString(), Name: &name, DeviceNumber: number,
+			Voucher:  `{"username":"` + uuid.NewString()[0:22] + `"}`,
+			TenantID: claims.TenantID, CreatedAt: &now, UpdateAt: &now,
+			AccessWay: StringPtr("B"), Description: item.description,
+			DeviceConfigID: &configID, IsOnline: 0, ActivateFlag: "active",
+			ServiceAccessID: &req.ServiceAccessId,
+		})
+	}
+	outbox := &model.DeviceBatchOutbox{
+		TenantID: claims.TenantID, ServiceAccessID: req.ServiceAccessId, Destination: host,
+		Status: model.DeviceBatchDeliveryPending,
+	}
+	persisted, persistedOutbox, err := dal.CreateDeviceBatch(devices, outbox)
+	if err != nil {
+		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{"sql_error": err.Error()})
+	}
+
+	delivery, deliveryErr := d.tryDeviceBatchDelivery(persistedOutbox.EventID)
+	if deliveryErr != nil {
+		logrus.WithError(deliveryErr).WithField("event_id", persistedOutbox.EventID).
+			Warn("device batch committed; plugin notification remains pending")
+	}
+	if delivery == nil {
+		delivery = persistedOutbox
+		message := "delivery state refresh failed"
+		if deliveryErr != nil {
+			message += ": " + deliveryErr.Error()
+		}
+		delivery.LastError = &message
+	}
+	return model.BatchCreateDeviceRsp{Devices: persisted, Delivery: deviceBatchDeliveryResponse(delivery)}, nil
+}
+
+func (d *Device) tryDeviceBatchDelivery(eventID string) (*model.DeviceBatchOutbox, error) {
+	outbox, err := dal.ClaimDeviceBatchOutbox(eventID)
+	if err != nil {
+		return nil, err
+	}
+	if outbox != nil {
+		err = d.deliverDeviceBatchOutbox(*outbox)
+	}
+	state, stateErr := dal.GetDeviceBatchOutbox(eventID)
+	if stateErr != nil {
+		return nil, stateErr
+	}
+	return state, err
+}
+
+func (d *Device) deliverDeviceBatchOutbox(outbox model.DeviceBatchOutbox) error {
+	notifier := d.batchNotifier
+	if notifier == nil {
+		notifier = httpDeviceBatchNotifier{}
+	}
+	if outbox.ClaimToken == nil || *outbox.ClaimToken == "" {
+		return fmt.Errorf("device batch event %s has no claim token", outbox.EventID)
+	}
+	destination := outbox.Destination
+	serviceAccess, deliveryErr := dal.GetServiceAccessByIDAndTenant(outbox.ServiceAccessID, outbox.TenantID)
+	if deliveryErr == nil {
+		_, destination, deliveryErr = dal.GetServicePluginHttpAddressByID(serviceAccess.ServicePluginID)
+	}
+	if deliveryErr == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_, deliveryErr = notifier.Notify(ctx, "1", outbox.Payload, destination)
+		cancel()
+	}
+	now, err := dal.GetDatabaseTime()
+	if err != nil {
+		return fmt.Errorf("read database time for device batch event %s: %w", outbox.EventID, err)
+	}
+	if deliveryErr == nil {
+		return dal.MarkDeviceBatchOutboxDelivered(outbox.EventID, *outbox.ClaimToken, outbox.Attempts, destination, now)
+	}
+
+	delay := 5 * time.Second
+	for attempt := 1; attempt < outbox.Attempts && delay < time.Hour; attempt++ {
+		delay *= 2
+	}
+	if delay > time.Hour {
+		delay = time.Hour
+	}
+	failure := deliveryErr.Error()
+	if len(failure) > 4000 {
+		failure = failure[:4000]
+	}
+	if err := dal.MarkDeviceBatchOutboxFailed(outbox.EventID, *outbox.ClaimToken, outbox.Attempts, destination, failure, now.Add(delay), now); err != nil {
+		return fmt.Errorf("plugin notification failed (%v) and retry state update failed: %w", deliveryErr, err)
+	}
+	return fmt.Errorf("plugin notification failed: %w", deliveryErr)
+}
+
+func (d *Device) DeliverPendingDeviceBatchNotifications(limit int) error {
+	if !d.deliveryRunning.CompareAndSwap(false, true) {
+		return nil
+	}
+	defer d.deliveryRunning.Store(false)
+	if limit < 1 {
+		limit = 1
+	}
+	var failures []string
+	for delivered := 0; delivered < limit; delivered++ {
+		outbox, err := dal.ClaimDeviceBatchOutbox("")
+		if err != nil {
+			return err
+		}
+		if outbox == nil {
+			break
+		}
+		if err := d.deliverDeviceBatchOutbox(*outbox); err != nil {
+			failures = append(failures, outbox.EventID+": "+err.Error())
+		}
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("device batch delivery failures: %s", strings.Join(failures, "; "))
+	}
+	return nil
+}
+
+func (*Device) CleanupDeliveredDeviceBatchOutbox() error {
+	return dal.CleanupDeliveredDeviceBatchOutbox(30 * 24 * time.Hour)
+}
+
+func deviceBatchDeliveryResponse(outbox *model.DeviceBatchOutbox) model.DeviceBatchDeliveryRsp {
+	response := model.DeviceBatchDeliveryRsp{
+		EventID: outbox.EventID, Status: outbox.Status, Attempts: outbox.Attempts, LastError: outbox.LastError,
+	}
+	if outbox.Status != model.DeviceBatchDeliveryDelivered {
+		response.NextRetryAt = &outbox.NextRetryAt
+	}
+	return response
 }
 
 func (*Device) UpdateDevice(req model.UpdateDeviceReq, claims *utils.UserClaims) (*model.Device, error) {

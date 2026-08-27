@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jinzhu/copier"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 type ServiceAccess struct{}
@@ -116,19 +118,23 @@ func (*ServiceAccess) Update(req *model.UpdateAccessReq) error {
 	return nil
 }
 
-func (*ServiceAccess) Delete(id string) error {
-	// 查询是否还有未删除的设备
-	devices, err := dal.GetServiceDeviceList(id)
-	if err != nil {
-		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
-			"sql_error": err.Error(),
-		})
+func (*ServiceAccess) Delete(id string, claims *utils.UserClaims) error {
+	if claims == nil || claims.TenantID == "" {
+		return errcode.NewWithMessage(errcode.CodeNoPermission, "no tenant permission")
 	}
-	if len(devices) > 0 {
-		return errcode.New(200064)
-	}
-	err = dal.DeleteServiceAccess(id)
+	err := dal.DeleteServiceAccess(id, claims.TenantID)
 	if err != nil {
+		if errors.Is(err, dal.ErrServiceAccessHasDevices) {
+			return errcode.New(200064)
+		}
+		if errors.Is(err, dal.ErrPendingDeviceBatchDelivery) {
+			return errcode.WithData(errcode.CodeParamError, map[string]interface{}{
+				"error": "service access still has pending device synchronization",
+			})
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.NewWithMessage(errcode.CodeNoPermission, "service access not owned by current tenant")
+		}
 		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
 			"sql_error": err.Error(),
 		})

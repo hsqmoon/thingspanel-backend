@@ -25,13 +25,28 @@ type CreateDeviceReq struct {
 }
 
 type BatchCreateDeviceReq struct {
-	ServiceAccessId string `json:"service_access_id" validate:"required,max=36"` // 服务接入点ID
-	DeviceList      []struct {
-		DeviceName     string  `json:"device_name" validate:"required,max=255"`     // 设备名称
-		DeviceNumber   string  `json:"device_number" validate:"required,max=36"`    // 设备编号
-		Description    *string `json:"description" validate:"omitempty,max=500"`    // 描述
-		DeviceConfigId string  `json:"device_config_id" validate:"required,max=36"` // 设备配置ID
-	} `json:"device_list" validate:"required"`
+	ServiceAccessId string                  `json:"service_access_id" validate:"required,max=36"` // 服务接入点ID
+	DeviceList      []BatchCreateDeviceItem `json:"device_list" validate:"required"`
+}
+
+type BatchCreateDeviceItem struct {
+	DeviceName     string  `json:"device_name" validate:"required,max=255"`     // 设备名称
+	DeviceNumber   string  `json:"device_number" validate:"required,max=36"`    // 设备编号
+	Description    *string `json:"description" validate:"omitempty,max=500"`    // 描述
+	DeviceConfigId string  `json:"device_config_id" validate:"required,max=36"` // 设备配置ID
+}
+
+type BatchCreateDeviceRsp struct {
+	Devices  []*Device              `json:"devices"`
+	Delivery DeviceBatchDeliveryRsp `json:"delivery"`
+}
+
+type DeviceBatchDeliveryRsp struct {
+	EventID     string     `json:"event_id"`
+	Status      string     `json:"status"`
+	Attempts    int        `json:"attempts"`
+	NextRetryAt *time.Time `json:"next_retry_at,omitempty"`
+	LastError   *string    `json:"last_error,omitempty"`
 }
 
 type UpdateDeviceReq struct {

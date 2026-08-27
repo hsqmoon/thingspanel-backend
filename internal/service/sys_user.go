@@ -955,11 +955,10 @@ func (u *User) GetTenantSetupState() (*model.TenantSetupStateRsp, error) {
 }
 
 // InitSuperAdmin 首次安装本地超管初始化。
-// 旧版市场回流字段仅保留请求兼容，不再作为初始化前置条件。
 func (u *User) InitSuperAdmin(ctx context.Context, req *model.SuperAdminInitReq) (*model.LoginRsp, error) {
 	requestEmail := strings.TrimSpace(req.Email)
 
-	if req.ConfirmPassword != "" && req.Password != req.ConfirmPassword {
+	if req.Password != req.ConfirmPassword {
 		return nil, errcode.New(200041)
 	}
 
@@ -1078,11 +1077,6 @@ func (u *User) InitSuperAdmin(ctx context.Context, req *model.SuperAdminInitReq)
 	}
 
 	return loginRsp, nil
-}
-
-// MarketRegister 兼容旧接口命名，语义等同于本地超管初始化。
-func (u *User) MarketRegister(ctx context.Context, req *model.MarketRegisterReq) (*model.LoginRsp, error) {
-	return u.InitSuperAdmin(ctx, req)
 }
 
 // 根据租户ID查询租户信息

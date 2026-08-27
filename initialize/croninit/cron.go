@@ -16,6 +16,20 @@ var c = cron.New()
 func CronInit() {
 	// 初始化设备统计定时任务
 	InitDeviceStatsCron(c)
+	if err := c.AddFunc("*/5 * * * * *", func() {
+		if err := service.GroupApp.Device.DeliverPendingDeviceBatchNotifications(50); err != nil {
+			logrus.Warn("device batch outbox delivery failed: ", err)
+		}
+	}); err != nil {
+		logrus.Error("device batch outbox worker registration failed: ", err)
+	}
+	if err := c.AddFunc("0 15 3 * * *", func() {
+		if err := service.GroupApp.Device.CleanupDeliveredDeviceBatchOutbox(); err != nil {
+			logrus.Warn("device batch outbox cleanup failed: ", err)
+		}
+	}); err != nil {
+		logrus.Error("device batch outbox cleanup registration failed: ", err)
+	}
 	c.AddFunc("0 */5 * * * *", func() {
 		if err := service.RunNSNRHourlyAggregate(); err != nil { logrus.Error("NSNR hourly aggregation failed: ", err) }
 	})

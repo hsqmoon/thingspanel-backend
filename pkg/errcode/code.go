@@ -33,11 +33,8 @@ const (
 	CodeEmailNotFound   = 200015 // 用户邮箱不存在
 	// 首次初始化错误码
 	CodeSuperAdminAlreadyInitialized = 200072 // 超管已经初始化
-	// 旧版市场联动错误码（保留兼容）
-	CodeMarketServiceUnavailable = 200056 // 市场服务不可达
-	CodeMarketCheckFailed        = 200057 // 市场邮箱校验失败
-	CodeLocalInitCreateUserFail  = 200058 // 本地创建超管失败
-	CodeLocalInitLoginFail       = 200059 // 本地登录态创建失败
+	CodeLocalInitCreateUserFail      = 200058 // 本地创建超管失败
+	CodeLocalInitLoginFail           = 200059 // 本地登录态创建失败
 
 	// 权限模块 (201xxx)
 	CodeNoPermission = 201001 // 无权限

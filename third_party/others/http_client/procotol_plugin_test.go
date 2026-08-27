@@ -48,3 +48,18 @@ func TestNotificationUsesCanonicalPluginEndpoint(t *testing.T) {
 		t.Fatalf("Notification returned error: %v", err)
 	}
 }
+
+func TestNotificationRejectsBusinessFailure(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"code":500,"message":"reload failed"}`))
+	}))
+	defer server.Close()
+
+	host := strings.TrimPrefix(server.URL, "http://")
+	_, err := Notification("1", `{}`, host)
+	if err == nil || !strings.Contains(err.Error(), "reload failed") {
+		t.Fatalf("expected business acknowledgement failure, got %v", err)
+	}
+}

@@ -58,7 +58,8 @@ func (*ServiceAccessApi) Update(c *gin.Context) {
 // /api/v1/service/access/:id [delete]
 func (*ServiceAccessApi) Delete(c *gin.Context) {
 	id := c.Param("id")
-	err := service.GroupApp.ServiceAccess.Delete(id)
+	userClaims := c.MustGet("claims").(*utils.UserClaims)
+	err := service.GroupApp.ServiceAccess.Delete(id, userClaims)
 	if err != nil {
 		c.Error(err)
 		return

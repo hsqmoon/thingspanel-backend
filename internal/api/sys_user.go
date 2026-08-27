@@ -340,23 +340,6 @@ func (*UserApi) InitSuperAdmin(c *gin.Context) {
 	c.Set("data", loginRsp)
 }
 
-// MarketRegister POST /api/v1/tenant/market-register
-// @description 兼容旧接口：本地超管初始化
-func (*UserApi) MarketRegister(c *gin.Context) {
-	var req model.SuperAdminInitReq
-	if !BindAndValidate(c, &req) {
-		return
-	}
-
-	loginRsp, err := service.GroupApp.User.InitSuperAdmin(c, &req)
-	if err != nil {
-		c.Error(err)
-		return
-	}
-
-	c.Set("data", loginRsp)
-}
-
 // 获取租户ID
 // @Router   /api/v1/user/tenant/id [get]
 func (*UserApi) GetTenantID(c *gin.Context) {

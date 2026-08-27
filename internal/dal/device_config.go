@@ -93,6 +93,14 @@ func GetDeviceConfigByID(id string) (*model.DeviceConfig, error) {
 	return deviceconfig, nil
 }
 
+func GetDeviceConfigsByIDsAndTenant(ids []string, tenantID string) ([]*model.DeviceConfig, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	q := query.DeviceConfig
+	return q.WithContext(context.Background()).Where(q.ID.In(ids...), q.TenantID.Eq(tenantID)).Find()
+}
+
 func GetDeviceConfigListByPage(deviceconfig *model.GetDeviceConfigListByPageReq, claims *utils.UserClaims) (int64, interface{}, error) {
 	q := query.DeviceConfig
 	var count int64

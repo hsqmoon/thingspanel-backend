@@ -1,6 +1,8 @@
 package http_client
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -78,6 +80,10 @@ func DisconnectDevice(reqdata []byte, host string) (*http.Response, error) {
 
 // messageType 1-服务配置修改
 func Notification(messageType string, message string, host string) ([]byte, error) {
+	return NotificationWithContext(context.Background(), messageType, message, host)
+}
+
+func NotificationWithContext(ctx context.Context, messageType string, message string, host string) ([]byte, error) {
 	type ReqData struct {
 		MessageType string `json:"message_type"`
 		Message     string `json:"message"`
@@ -87,7 +93,12 @@ func Notification(messageType string, message string, host string) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-	response, err := PostJson("http://"+host+"/api/v1/plugin/notification", reqDataBytes)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+host+"/api/v1/plugin/notification", bytes.NewReader(reqDataBytes))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(req)
 	if err != nil {
 		logrus.Error(err)
 		return nil, fmt.Errorf("post plugin notification failed: %s", err)
@@ -104,6 +115,13 @@ func Notification(messageType string, message string, host string) ([]byte, erro
 	if err != nil {
 		logrus.Error(err)
 		return nil, fmt.Errorf("read plugin response body failed: %s", err)
+	}
+	var acknowledgement RspData
+	if err := json.Unmarshal(body, &acknowledgement); err != nil {
+		return nil, fmt.Errorf("decode plugin notification acknowledgement failed: %w", err)
+	}
+	if acknowledgement.Code != http.StatusOK {
+		return nil, fmt.Errorf("plugin notification rejected: code=%d message=%s", acknowledgement.Code, acknowledgement.Message)
 	}
 	logrus.Info(string(body))
 

@@ -2,17 +2,69 @@ package dal
 
 import (
 	"context"
+	"errors"
+
 	"project/internal/model"
 	"project/internal/query"
+	"project/pkg/global"
 
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
-func DeleteServiceAccess(id string) error {
-	q := query.ServiceAccess
-	queryBuilder := q.WithContext(context.Background())
-	_, err := queryBuilder.Where(q.ID.Eq(id)).Delete()
-	return err
+var (
+	ErrServiceAccessHasDevices    = errors.New("service access still has devices")
+	ErrPendingDeviceBatchDelivery = errors.New("service access has pending device batch delivery")
+)
+
+// DeleteServiceAccess serializes device creation and access deletion by
+// locking the tenant-owned access row before checking every dependent row.
+func DeleteServiceAccess(id, tenantID string) error {
+	if id == "" || tenantID == "" {
+		return gorm.ErrRecordNotFound
+	}
+	return global.DB.Transaction(func(tx *gorm.DB) error {
+		var serviceAccess model.ServiceAccess
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND tenant_id = ?", id, tenantID).
+			Take(&serviceAccess).Error; err != nil {
+			return err
+		}
+
+		var devices int64
+		if err := tx.Model(&model.Device{}).
+			Where("service_access_id = ? AND tenant_id = ?", id, tenantID).
+			Count(&devices).Error; err != nil {
+			return err
+		}
+		if devices > 0 {
+			return ErrServiceAccessHasDevices
+		}
+
+		var pending int64
+		if err := tx.Model(&model.DeviceBatchOutbox{}).
+			Where("service_access_id = ? AND tenant_id = ? AND status <> ?", id, tenantID, model.DeviceBatchDeliveryDelivered).
+			Count(&pending).Error; err != nil {
+			return err
+		}
+		if pending > 0 {
+			return ErrPendingDeviceBatchDelivery
+		}
+		if err := tx.Model(&model.DeviceBatchOutbox{}).
+			Where("service_access_ref_id = ? AND tenant_id = ? AND status = ?", id, tenantID, model.DeviceBatchDeliveryDelivered).
+			Update("service_access_ref_id", nil).Error; err != nil {
+			return err
+		}
+		result := tx.Where("id = ? AND tenant_id = ?", id, tenantID).Delete(&model.ServiceAccess{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
 }
 
 func UpdateServiceAccess(id string, updates map[string]interface{}) error {
@@ -88,4 +140,11 @@ func GetServiceAccessByID(id string) (*model.ServiceAccess, error) {
 		return nil, err
 	}
 	return serviceAccess, nil
+}
+
+// GetServiceAccessByIDAndTenant prevents a tenant from binding devices to an
+// access point owned by another tenant.
+func GetServiceAccessByIDAndTenant(id, tenantID string) (*model.ServiceAccess, error) {
+	q := query.ServiceAccess
+	return q.WithContext(context.Background()).Where(q.ID.Eq(id), q.TenantID.Eq(tenantID)).First()
 }

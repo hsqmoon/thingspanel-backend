@@ -24,15 +24,6 @@ func CreateDevice(device *model.Device) error {
 	return createDevicesWithDefaultRootGroup([]*model.Device{device})
 }
 
-// 批量创建设备
-func CreateDeviceBatch(devices []*model.Device) error {
-	return createDevicesWithDefaultRootGroup(devices)
-}
-
-func CreateDeviceBath(devices []*model.Device) error {
-	return createDevicesWithDefaultRootGroup(devices)
-}
-
 func createDevicesWithDefaultRootGroup(devices []*model.Device) error {
 	if len(devices) == 0 {
 		return nil
