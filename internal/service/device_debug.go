@@ -70,7 +70,9 @@ func (s *DeviceDebug) SetDeviceDebug(ctx context.Context, deviceID string, req *
 	now := time.Now().Unix()
 
 	if req != nil && req.Enabled != nil && !*req.Enabled {
-		_ = global.REDIS.Del(ctx, devDebugCfgKey(deviceID)).Err()
+		if err := global.REDIS.Del(ctx, devDebugCfgKey(deviceID)).Err(); err != nil {
+			return resp, errcode.WithData(errcode.CodeCacheError, map[string]interface{}{"cache_error": err.Error()})
+		}
 		return s.GetDeviceDebugStatus(ctx, deviceID, claims)
 	}
 
@@ -80,7 +82,9 @@ func (s *DeviceDebug) SetDeviceDebug(ctx context.Context, deviceID string, req *
 		expireAt = *req.ExpireAt
 	case req != nil && req.Duration != nil:
 		if *req.Duration <= 0 {
-			_ = global.REDIS.Del(ctx, devDebugCfgKey(deviceID)).Err()
+			if err := global.REDIS.Del(ctx, devDebugCfgKey(deviceID)).Err(); err != nil {
+				return resp, errcode.WithData(errcode.CodeCacheError, map[string]interface{}{"cache_error": err.Error()})
+			}
 			return s.GetDeviceDebugStatus(ctx, deviceID, claims)
 		}
 		expireAt = now + *req.Duration
@@ -99,7 +103,9 @@ func (s *DeviceDebug) SetDeviceDebug(ctx context.Context, deviceID string, req *
 
 	ttlSeconds := (expireAt - now) + debugTTLExtendSeconds
 	if ttlSeconds <= 0 {
-		_ = global.REDIS.Del(ctx, devDebugCfgKey(deviceID)).Err()
+		if err := global.REDIS.Del(ctx, devDebugCfgKey(deviceID)).Err(); err != nil {
+			return resp, errcode.WithData(errcode.CodeCacheError, map[string]interface{}{"cache_error": err.Error()})
+		}
 		return s.GetDeviceDebugStatus(ctx, deviceID, claims)
 	}
 
@@ -109,7 +115,10 @@ func (s *DeviceDebug) SetDeviceDebug(ctx context.Context, deviceID string, req *
 		MaxItems:        maxItems,
 		PayloadMaxBytes: payloadMaxBytes,
 	}
-	raw, _ := json.Marshal(cfg)
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return resp, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"json_error": err.Error()})
+	}
 
 	pipe := global.REDIS.Pipeline()
 	pipe.Set(ctx, devDebugCfgKey(deviceID), raw, time.Duration(ttlSeconds)*time.Second)
@@ -209,8 +218,14 @@ func (s *DeviceDebug) GetDeviceDebugLogs(ctx context.Context, deviceID string, r
 		return resp, errcode.WithData(errcode.CodeCacheError, map[string]interface{}{"cache_error": err.Error()})
 	}
 
-	total, _ := llen.Result()
-	rows, _ := lrange.Result()
+	total, err := llen.Result()
+	if err != nil {
+		return resp, errcode.WithData(errcode.CodeCacheError, map[string]interface{}{"cache_error": err.Error()})
+	}
+	rows, err := lrange.Result()
+	if err != nil {
+		return resp, errcode.WithData(errcode.CodeCacheError, map[string]interface{}{"cache_error": err.Error()})
+	}
 
 	resp.Total = total
 	resp.Offset = offset
@@ -219,15 +234,7 @@ func (s *DeviceDebug) GetDeviceDebugLogs(ctx context.Context, deviceID string, r
 	for _, raw := range rows {
 		var item model.DeviceDebugLogEntry
 		if err := json.Unmarshal([]byte(raw), &item); err != nil {
-			resp.List = append(resp.List, model.DeviceDebugLogEntry{
-				Action:  "error",
-				Outcome: "error",
-				Error:   "invalid log json",
-				Meta: map[string]interface{}{
-					"raw": raw,
-				},
-			})
-			continue
+			return DeviceDebugLogsResp{}, errcode.WithData(errcode.CodeCacheError, map[string]interface{}{"cache_error": err.Error()})
 		}
 
 		// Normalize legacy fields to the current schema.

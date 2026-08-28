@@ -235,7 +235,7 @@ func (f *TelemetryUplink) processSubDevices(parentID string, subDeviceData map[s
 			f.logger.WithFields(logrus.Fields{
 				"parent_id":   parentID,
 				"device_addr": addr,
-			}).Warn("Sub device not found")
+			}).Error("Sub device not found")
 			continue
 		}
 
@@ -247,7 +247,7 @@ func (f *TelemetryUplink) processSubDevices(parentID string, subDeviceData map[s
 // processSubGateways 处理子网关数据（递归，最多5层）
 func (f *TelemetryUplink) processSubGateways(parentID string, subGatewayData map[string]*model.GatewayPublish, originalMsg *DeviceMessage, depth int) {
 	if depth > 5 {
-		f.logger.Warn("Maximum gateway depth (5) exceeded")
+		f.logger.Error("Maximum gateway depth (5) exceeded")
 		return
 	}
 
@@ -278,7 +278,7 @@ func (f *TelemetryUplink) processSubGateways(parentID string, subGatewayData map
 			f.logger.WithFields(logrus.Fields{
 				"parent_id":    parentID,
 				"gateway_addr": addr,
-			}).Warn("Sub gateway not found")
+			}).Error("Sub gateway not found")
 			continue
 		}
 
@@ -365,7 +365,7 @@ func (f *TelemetryUplink) convertToTelemetryPoints(payload []byte, device *model
 			"device_id": device.ID,
 			"payload":   string(payload),
 			"error":     err,
-		}).Warn("【遥测上行】payload is not valid JSON object, wrapping as {\"_raw\": ...}")
+		}).Debug("【遥测上行】payload is not valid JSON object, wrapping as {\"_raw\": ...}")
 
 		// 尝试将 payload 作为 JSON 值解析（可能是字符串、数字、布尔等）
 		var rawValue interface{}
@@ -414,7 +414,10 @@ func (f *TelemetryUplink) refreshHeartbeat(device *model.Device) {
 			f.logger.WithField("device_id", device.ID).Info("Device auto online by business message")
 
 			// 清理缓存
-			initialize.DelDeviceCache(device.ID)
+			if err := initialize.DelDeviceCache(device.ID); err != nil {
+				f.logger.WithError(err).WithField("device_id", device.ID).Error("Failed to invalidate device cache")
+				return
+			}
 
 			// 获取最新设备信息
 			updatedDevice, err := initialize.GetDeviceCacheById(device.ID)

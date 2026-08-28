@@ -151,7 +151,7 @@ func (f *EventUplink) processMessage(msg *DeviceMessage) {
 				"device_id": device.ID,
 				"payload":   string(processedPayload),
 				"error":     err,
-			}).Warn("【事件上行】payload is not valid EventInfo, wrapping as {\"method\": \"_raw\", \"params\": {\"value\": ...}}")
+			}).Debug("【事件上行】payload is not valid EventInfo, wrapping as {\"method\": \"_raw\", \"params\": {\"value\": ...}}")
 
 			// 尝试将 payload 作为 JSON 值解析（可能是字符串、数字、布尔等）
 			var rawValue interface{}
@@ -230,7 +230,7 @@ func (f *EventUplink) processSubDevices(parentID string, subDeviceData map[strin
 			f.logger.WithFields(logrus.Fields{
 				"parent_id":   parentID,
 				"device_addr": addr,
-			}).Warn("Sub device not found")
+			}).Error("Sub device not found")
 			continue
 		}
 
@@ -241,7 +241,7 @@ func (f *EventUplink) processSubDevices(parentID string, subDeviceData map[strin
 // processSubGateways 处理子网关数据（递归，最多5层）
 func (f *EventUplink) processSubGateways(parentID string, subGatewayData map[string]*model.GatewayCommandPulish, originalMsg *DeviceMessage, depth int) {
 	if depth > 5 {
-		f.logger.Warn("Maximum gateway depth (5) exceeded")
+		f.logger.Error("Maximum gateway depth (5) exceeded")
 		return
 	}
 
@@ -272,7 +272,7 @@ func (f *EventUplink) processSubGateways(parentID string, subGatewayData map[str
 			f.logger.WithFields(logrus.Fields{
 				"parent_id":    parentID,
 				"gateway_addr": addr,
-			}).Warn("Sub gateway not found")
+			}).Error("Sub gateway not found")
 			continue
 		}
 
@@ -356,7 +356,10 @@ func (f *EventUplink) refreshHeartbeat(device *model.Device) {
 			f.logger.WithField("device_id", device.ID).Info("Device auto online by business message")
 
 			// 清理缓存
-			initialize.DelDeviceCache(device.ID)
+			if err := initialize.DelDeviceCache(device.ID); err != nil {
+				f.logger.WithError(err).WithField("device_id", device.ID).Error("Failed to invalidate device cache")
+				return
+			}
 
 			// 获取最新设备信息
 			updatedDevice, err := initialize.GetDeviceCacheById(device.ID)

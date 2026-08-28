@@ -13,7 +13,6 @@ import (
 	"project/third_party/others/http_client"
 
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 
 	"github.com/jinzhu/copier"
@@ -111,6 +110,11 @@ func (*ServicePlugin) Heartbeat(req *model.HeartbeatReq) error {
 
 // GetServiceSelect
 func (*ServicePlugin) GetServiceSelect(req *model.GetServiceSelectReq) (interface{}, error) {
+	if req.DeviceType != nil && *req.DeviceType != 1 && *req.DeviceType != 2 && *req.DeviceType != 3 {
+		return nil, errcode.WithData(errcode.CodeParamError, map[string]interface{}{
+			"error": "device type must be 1, 2, or 3",
+		})
+	}
 	// 返回数据map
 	resp := make(map[string]interface{})
 	var protocolList []map[string]interface{}
@@ -133,12 +137,18 @@ func (*ServicePlugin) GetServiceSelect(req *model.GetServiceSelectReq) (interfac
 		if service.ServiceType == int32(1) {
 			if req.DeviceType != nil {
 				flag = false
+				if service.ServiceConfig == nil {
+					return nil, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{
+						"error": "service plugin config is missing",
+					})
+				}
 				// 解析service.ServiceConfig
 				var serviceAccessConfig model.ProtocolAccessConfig
 				err = json.Unmarshal([]byte(*service.ServiceConfig), &serviceAccessConfig)
 				if err != nil {
-					logrus.Warn("service plugin config error: ", err)
-					continue
+					return nil, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{
+						"error": "invalid service plugin config: " + err.Error(),
+					})
 				}
 				switch *req.DeviceType {
 				case 1:
@@ -149,8 +159,6 @@ func (*ServicePlugin) GetServiceSelect(req *model.GetServiceSelectReq) (interfac
 					if serviceAccessConfig.DeviceType == 2 {
 						flag = true
 					}
-				default:
-					logrus.Warn("device type is error: ", *req.DeviceType)
 				}
 			}
 			if flag {

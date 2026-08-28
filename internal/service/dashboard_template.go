@@ -61,22 +61,26 @@ func (s *DashboardTemplateService) Download(
 	}
 	installID := installation.ID
 	fail := func(code string, cause error) error {
-		s.installService.failInstallation(ctx, installID, tenantID, code, cause.Error())
-		return cause
+		return s.installService.failInstallation(ctx, installID, tenantID, code, cause)
 	}
 
 	bundle, err := s.installService.downloadBundleFromHorizon(ctx, req.MarketToken, req.BundleKey, req.Version)
 	if err != nil {
 		return nil, fail("DOWNLOAD_FAILED", err)
 	}
-	_ = s.installService.installRepo.UpdateStatus(ctx, installID, model.InstallStateDownloaded, "", "")
+	if err := s.installService.transitionInstallation(ctx, installID, tenantID, model.InstallStateDownloading, model.InstallStateDownloaded); err != nil {
+		return nil, fail("STATE_PERSIST_FAILED", err)
+	}
 
-	if err := s.installService.verifyBundle(ctx, installID, tenantID, bundle, req.MarketToken); err != nil {
+	warnings, err := s.installService.verifyBundle(ctx, installID, tenantID, bundle, req.MarketToken)
+	if err != nil {
 		return nil, fail("VERIFICATION_FAILED", err)
 	}
-	_ = s.installService.installRepo.UpdateStatus(ctx, installID, model.InstallStateVerified, "", "")
+	if err := s.installService.transitionInstallation(ctx, installID, tenantID, model.InstallStateDownloaded, model.InstallStateVerified); err != nil {
+		return nil, fail("STATE_PERSIST_FAILED", err)
+	}
 
-	templateMappings, _, err := s.installService.installDeviceTemplates(
+	templateMappings, templateWarnings, err := s.installService.installDeviceTemplates(
 		ctx,
 		installID,
 		tenantID,
@@ -86,36 +90,46 @@ func (s *DashboardTemplateService) Download(
 	if err != nil {
 		return nil, fail("MODELS_INSTALL_FAILED", err)
 	}
+	warnings = append(warnings, templateWarnings...)
+	if len(warnings) > 0 {
+		if err := s.installService.installRepo.UpdateWarnings(ctx, installID, warnings); err != nil {
+			return nil, fail("WARNINGS_PERSIST_FAILED", err)
+		}
+	}
 	if err := s.validateDeviceTemplateMappings(ctx, tenantID, bundle, templateMappings); err != nil {
 		return nil, fail("MODELS_INCOMPATIBLE", err)
 	}
 	if err := s.ensureDeviceTemplateConfigs(ctx, tenantID, bundle, templateMappings); err != nil {
 		return nil, fail("CONFIGS_INSTALL_FAILED", err)
 	}
-	_ = s.installService.installRepo.UpdateStatus(ctx, installID, model.InstallStateModelsInstalled, "", "")
+	if err := s.installService.transitionInstallation(ctx, installID, tenantID, model.InstallStateVerified, model.InstallStateModelsInstalled); err != nil {
+		return nil, fail("STATE_PERSIST_FAILED", err)
+	}
 
 	response, err := s.saveDashboardTemplates(ctx, tenantID, req, bundle, templateMappings)
 	if err != nil {
 		return nil, fail("TEMPLATES_SAVE_FAILED", err)
 	}
-	_ = s.installService.installRepo.UpdateStatus(ctx, installID, model.InstallStateCompleted, "", "")
-	s.installService.recordAudit(
+	if err := s.installService.installRepo.FinalizeWithNotification(
 		ctx,
 		installID,
-		tenantID,
-		"templates_downloaded",
-		model.InstallStateModelsInstalled,
 		model.InstallStateCompleted,
-		nil,
-	)
-	go s.installService.notifyHorizonInstallComplete(
-		context.Background(),
-		req.MarketToken,
-		req.BundleKey,
-		req.Version,
-		tenantID,
-		installID,
-	)
+		&model.MarketInstallNotificationOutbox{
+			TenantID:      tenantID,
+			BundleKey:     req.BundleKey,
+			BundleVersion: req.Version,
+			MarketToken:   req.MarketToken,
+		},
+		newInstallationAudit(
+			tenantID,
+			"templates_downloaded",
+			model.InstallStateModelsInstalled,
+			model.InstallStateCompleted,
+			nil,
+		),
+	); err != nil {
+		return nil, fail("STATE_PERSIST_FAILED", err)
+	}
 	return response, nil
 }
 
@@ -205,34 +219,42 @@ func (s *DashboardTemplateService) prepareDownloadInstallation(
 	tenantID string,
 ) (*model.MarketBundleInstallation, error) {
 	idempotencyKey := "download:" + s.installService.generateIdempotencyKey(req.BundleKey, req.Version, tenantID)
+	requestHash := s.installService.generateIdempotencyKey("dashboard-template:"+req.BundleKey, req.Version, tenantID)
 	existing, err := s.installService.installRepo.GetByIdempotencyKey(ctx, idempotencyKey, tenantID)
 	if err == nil {
-		_ = s.installService.installRepo.UpdateStatus(ctx, existing.ID, model.InstallStateDownloading, "", "")
+		if existing.RequestHash != requestHash {
+			return nil, errcode.WithData(errcode.CodeParamError, "idempotency key is already bound to a different dashboard template request")
+		}
+		if err := s.installService.installRepo.RefreshNotificationCredential(ctx, existing.ID, tenantID, req.MarketToken); err != nil {
+			return nil, dbError("refresh dashboard template notification credential", err)
+		}
+		if err := s.installService.transitionInstallation(ctx, existing.ID, tenantID, existing.Status, model.InstallStateDownloading); err != nil {
+			return nil, dbError("restart dashboard template download", err)
+		}
 		return existing, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, dbError("query dashboard template download", err)
 	}
 
-	installation, err := s.installService.installRepo.CreateInstallation(ctx, &model.MarketBundleInstallation{
+	installation, err := s.installService.installRepo.CreateInstallationWithAudit(ctx, &model.MarketBundleInstallation{
 		IdempotencyKey: idempotencyKey,
+		RequestHash:    requestHash,
 		BundleKey:      req.BundleKey,
 		BundleVersion:  req.Version,
 		TenantID:       tenantID,
 		Status:         model.InstallStateDownloading,
-	})
+	}, newInstallationAudit(tenantID, "template_download_started", "", model.InstallStateDownloading, nil))
 	if err != nil {
+		existing, readErr := s.installService.installRepo.GetByIdempotencyKey(ctx, idempotencyKey, tenantID)
+		if readErr == nil && existing != nil {
+			if existing.RequestHash != requestHash {
+				return nil, errcode.WithData(errcode.CodeParamError, "idempotency key is already bound to a different dashboard template request")
+			}
+			return existing, nil
+		}
 		return nil, dbError("create dashboard template download", err)
 	}
-	s.installService.recordAudit(
-		ctx,
-		installation.ID,
-		tenantID,
-		"template_download_started",
-		"",
-		model.InstallStateDownloading,
-		nil,
-	)
 	return installation, nil
 }
 
@@ -242,7 +264,7 @@ func (s *DashboardTemplateService) saveDashboardTemplates(
 	req *model.DownloadDashboardTemplateRequest,
 	bundle *model.HorizonBundleDownload,
 	templateMappings []*model.ResourceMappingResponse,
-) (*model.DownloadDashboardTemplateResponse, error) {
+) (response *model.DownloadDashboardTemplateResponse, resultErr error) {
 	var resources model.BundleResources
 	if err := json.Unmarshal(bundle.Resources, &resources); err != nil {
 		return nil, errcode.WithData(errcode.CodeParamError, "invalid dashboard resources: "+err.Error())
@@ -253,7 +275,9 @@ func (s *DashboardTemplateService) saveDashboardTemplates(
 
 	var metadata model.BundleMetadata
 	if len(bundle.Metadata) > 0 {
-		_ = json.Unmarshal(bundle.Metadata, &metadata)
+		if err := json.Unmarshal(bundle.Metadata, &metadata); err != nil {
+			return nil, errcode.WithData(errcode.CodeParamError, "invalid dashboard metadata: "+err.Error())
+		}
 	}
 
 	localTemplates := make(map[string]*model.ResourceMappingResponse, len(templateMappings))
@@ -261,9 +285,19 @@ func (s *DashboardTemplateService) saveDashboardTemplates(
 		localTemplates[mapping.MarketResourceKey] = mapping
 	}
 
-	response := &model.DownloadDashboardTemplateResponse{
+	response = &model.DownloadDashboardTemplateResponse{
 		TemplateIDs: make([]string, 0, len(resources.Dashboards)),
 	}
+	createdTemplateIDs := make([]string, 0, len(resources.Dashboards))
+	defer func() {
+		if resultErr == nil || len(createdTemplateIDs) == 0 {
+			return
+		}
+		if compensationErr := s.repo.DeleteTemplates(context.WithoutCancel(ctx), tenantID, createdTemplateIDs); compensationErr != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("compensate local dashboard templates: %w", compensationErr))
+		}
+		response = nil
+	}()
 	for _, dashboard := range resources.Dashboards {
 		existing, err := s.repo.FindMarketTemplate(
 			ctx,
@@ -353,6 +387,7 @@ func (s *DashboardTemplateService) saveDashboardTemplates(
 		}
 		response.TemplateIDs = append(response.TemplateIDs, template.ID)
 		response.Downloaded++
+		createdTemplateIDs = append(createdTemplateIDs, template.ID)
 	}
 	return response, nil
 }
@@ -579,6 +614,10 @@ func (s *DashboardTemplateService) CreateInstance(
 	if err != nil {
 		return nil, errcode.WithData(errcode.CodeSystemError, "resolve dashboard device bindings: "+err.Error())
 	}
+	bindingsJSON, err := json.Marshal(req.DeviceBindings)
+	if err != nil {
+		return nil, errcode.WithData(errcode.CodeSystemError, "encode dashboard device bindings: "+err.Error())
+	}
 
 	importResult, err := s.thingsVis.CreateDashboardFromSnapshot(ctx, authorization, req.Name, ThingsVisMarketSnapshot{
 		Name:          req.Name,
@@ -592,7 +631,6 @@ func (s *DashboardTemplateService) CreateInstance(
 		return nil, errcode.WithData(errcode.CodeSystemError, "create ThingsVis dashboard: "+err.Error())
 	}
 
-	bindingsJSON, _ := json.Marshal(req.DeviceBindings)
 	instance := &model.LocalDashboardTemplateInstance{
 		DashboardTemplateID: templateID,
 		TenantID:            tenantID,
@@ -602,8 +640,18 @@ func (s *DashboardTemplateService) CreateInstance(
 		DeviceBindings:      bindingsJSON,
 	}
 	if err := s.repo.CreateInstance(ctx, instance); err != nil {
-		_ = s.thingsVis.DeleteDashboardWithAuthorization(ctx, importResult.DashboardID, authorization)
-		return nil, dbError("record dashboard template instance", err)
+		persistErr := dbError("record dashboard template instance", err)
+		if compensationErr := s.thingsVis.DeleteDashboardWithAuthorization(
+			context.WithoutCancel(ctx),
+			importResult.DashboardID,
+			authorization,
+		); compensationErr != nil {
+			return nil, errors.Join(
+				persistErr,
+				fmt.Errorf("compensate dashboard %s: %w", importResult.DashboardID, compensationErr),
+			)
+		}
+		return nil, persistErr
 	}
 
 	return &model.CreateDashboardTemplateInstanceResponse{

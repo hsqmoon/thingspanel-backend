@@ -140,7 +140,7 @@ func (*TelemetryDataApi) ServeDeviceOnlineStatusWS(c *gin.Context) {
 	for _, did := range deviceIDs {
 		st, err := service.GroupApp.Device.GetDeviceOnlineStatus(did)
 		if err != nil {
-			logrus.WithError(err).WithField("device_id", did).Warn("查询当前设备状态失败，跳过")
+			logrus.WithError(err).WithField("device_id", did).Error("查询当前设备状态失败，跳过")
 			continue
 		}
 		isOnline := 0
@@ -188,7 +188,7 @@ func (*TelemetryDataApi) ServeDeviceOnlineStatusWS(c *gin.Context) {
 				return
 			case msg, ok := <-ch:
 				if !ok {
-					logrus.Warn("Redis 通道关闭")
+					logrus.Info("Redis 通道已正常关闭")
 					return
 				}
 

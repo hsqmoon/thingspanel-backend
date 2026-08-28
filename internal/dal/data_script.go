@@ -30,10 +30,13 @@ func UpdateDataScript(data *model.UpdateDataScriptReq) error {
 
 func DeleteDataScript(id string) error {
 	info, err := query.DataScript.Where(query.DataScript.ID.Eq(id)).Delete()
+	if err != nil {
+		return err
+	}
 	if info.RowsAffected == 0 {
 		return nil
 	}
-	return err
+	return nil
 }
 
 func GetDataScriptById(id string) (*model.DataScript, error) {

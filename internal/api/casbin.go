@@ -20,7 +20,11 @@ func (*CasbinApi) AddFunctionToRole(c *gin.Context) {
 		return
 	}
 
-	ok := casbinService.AddFunctionToRole(req.RoleID, req.FunctionsIDs)
+	ok, err := casbinService.AddFunctionToRole(req.RoleID, req.FunctionsIDs)
+	if err != nil {
+		c.Error(err)
+		return
+	}
 	if !ok {
 		c.Error(errcode.WithData(errcode.CodeParamError, map[string]interface{}{
 			"role_id":      req.RoleID,
@@ -41,12 +45,9 @@ func (*CasbinApi) HandleFunctionFromRole(c *gin.Context) {
 		return
 	}
 
-	roles, ok := casbinService.GetFunctionFromRole(req.RoleID)
-	if !ok {
-		c.Error(errcode.WithData(errcode.CodeParamError, map[string]interface{}{
-			"role_id": req.RoleID,
-			"error":   "GetFunctionFromRole failed",
-		}))
+	roles, err := casbinService.GetFunctionFromRole(req.RoleID)
+	if err != nil {
+		c.Error(err)
 		return
 	}
 
@@ -70,10 +71,18 @@ func (*CasbinApi) UpdateFunctionFromRole(c *gin.Context) {
 		return
 	}
 
-	f, _ := casbinService.GetFunctionFromRole(req.RoleID)
+	f, err := casbinService.GetFunctionFromRole(req.RoleID)
+	if err != nil {
+		c.Error(err)
+		return
+	}
 	if len(f) > 0 {
 		//没有记录删除会返回false
-		ok := casbinService.RemoveRoleAndFunction(req.RoleID)
+		ok, err := casbinService.RemoveRoleAndFunction(req.RoleID)
+		if err != nil {
+			c.Error(err)
+			return
+		}
 		if !ok {
 			c.Error(errcode.WithData(errcode.CodeParamError, map[string]interface{}{
 				"role_id": req.RoleID,
@@ -82,13 +91,18 @@ func (*CasbinApi) UpdateFunctionFromRole(c *gin.Context) {
 			return
 		}
 	}
-	ok := casbinService.AddFunctionToRole(req.RoleID, req.FunctionsIDs)
+	ok, err := casbinService.AddFunctionToRole(req.RoleID, req.FunctionsIDs)
+	if err != nil {
+		c.Error(err)
+		return
+	}
 	if !ok {
 		c.Error(errcode.WithData(errcode.CodeParamError, map[string]interface{}{
 			"role_id":      req.RoleID,
 			"function_ids": req.FunctionsIDs,
 			"error":        "AddFunctionToRole failed",
 		}))
+		return
 	}
 	c.Set("data", nil)
 }
@@ -97,7 +111,11 @@ func (*CasbinApi) UpdateFunctionFromRole(c *gin.Context) {
 // @Router   /api/v1/casbin/function/{id} [delete]
 func (*CasbinApi) DeleteFunctionFromRole(c *gin.Context) {
 	id := c.Param("id")
-	ok := casbinService.RemoveRoleAndFunction(id)
+	ok, err := casbinService.RemoveRoleAndFunction(id)
+	if err != nil {
+		c.Error(err)
+		return
+	}
 	if !ok {
 		c.Error(errcode.WithData(errcode.CodeParamError, map[string]interface{}{
 			"role_id": id,
@@ -116,7 +134,11 @@ func (*CasbinApi) AddRoleToUser(c *gin.Context) {
 		return
 	}
 
-	ok := casbinService.AddRolesToUser(req.UserID, req.RolesIDs)
+	ok, err := casbinService.AddRolesToUser(req.UserID, req.RolesIDs)
+	if err != nil {
+		c.Error(err)
+		return
+	}
 	if !ok {
 		c.Error(errcode.WithData(errcode.CodeParamError, map[string]interface{}{
 			"user_id": req.UserID,
@@ -138,12 +160,9 @@ func (*CasbinApi) HandleRolesFromUser(c *gin.Context) {
 		return
 	}
 
-	roles, ok := casbinService.GetRoleFromUser(req.UserID)
-	if !ok {
-		c.Error(errcode.WithData(errcode.CodeParamError, map[string]interface{}{
-			"user_id": req.UserID,
-			"error":   "GetRoleFromUser failed",
-		}))
+	roles, err := casbinService.GetRoleFromUser(req.UserID)
+	if err != nil {
+		c.Error(err)
 		return
 	}
 
@@ -168,14 +187,22 @@ func (*CasbinApi) UpdateRolesFromUser(c *gin.Context) {
 		return
 	}
 
-	casbinService.RemoveUserAndRole(req.UserID)
-	ok := casbinService.AddRolesToUser(req.UserID, req.RolesIDs)
+	if _, err := casbinService.RemoveUserAndRole(req.UserID); err != nil {
+		c.Error(err)
+		return
+	}
+	ok, err := casbinService.AddRolesToUser(req.UserID, req.RolesIDs)
+	if err != nil {
+		c.Error(err)
+		return
+	}
 	if !ok {
 		c.Error(errcode.WithData(errcode.CodeParamError, map[string]interface{}{
 			"user_id": req.UserID,
 			"role_id": req.RolesIDs,
 			"error":   "AddRolesToUser failed",
 		}))
+		return
 	}
 	c.Set("data", nil)
 }
@@ -184,7 +211,11 @@ func (*CasbinApi) UpdateRolesFromUser(c *gin.Context) {
 // @Router   /api/v1/casbin/user/{id} [delete]
 func (*CasbinApi) DeleteRolesFromUser(c *gin.Context) {
 	id := c.Param("id")
-	ok := casbinService.RemoveUserAndRole(id)
+	ok, err := casbinService.RemoveUserAndRole(id)
+	if err != nil {
+		c.Error(err)
+		return
+	}
 	if !ok {
 		c.Error(errcode.WithData(errcode.CodeParamError, map[string]interface{}{
 			"user_id": id,

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"project/internal/dal"
+	"project/pkg/constant"
 	"project/pkg/errcode"
 	"project/pkg/utils"
 
@@ -27,6 +28,7 @@ var tenantBusinessPrefixes = []string{
 	"/api/v1/casbin",
 	"/api/v1/command",
 	"/api/v1/dashboard-menu",
+	"/api/v1/thingsvis-dashboard",
 	"/api/v1/data_script",
 	"/api/v1/device",
 	"/api/v1/device_config",
@@ -49,7 +51,7 @@ var tenantBusinessPrefixes = []string{
 var staticTenantPathSegments = map[string]struct{}{
 	"api": {}, "v1": {}, "alarm": {}, "config": {}, "info": {}, "history": {}, "device": {}, "counts": {},
 	"attribute": {}, "datas": {}, "board": {}, "home": {}, "trend": {}, "tenant": {}, "user": {}, "casbin": {},
-	"function": {}, "dashboard-menu": {}, "data_script": {}, "quiz": {}, "enable": {}, "datapolicy": {},
+	"function": {}, "dashboard-menu": {}, "thingsvis-dashboard": {}, "data_script": {}, "quiz": {}, "enable": {}, "datapolicy": {},
 	"device_config": {}, "menu": {}, "batch": {}, "connect": {}, "voucher_type": {}, "metrics": {}, "condition": {},
 	"active": {}, "detail": {}, "check": {}, "list": {}, "son": {}, "add": {}, "form": {}, "update": {},
 	"sub-list": {}, "sub-remove": {}, "map": {}, "telemetry": {}, "online": {}, "status": {}, "debug": {},
@@ -101,6 +103,8 @@ func TenantScope() gin.HandlerFunc {
 				return
 			}
 			scopedClaims.TenantID = requestedTenantID
+		} else if isDashboardScopePath(c.Request.URL.Path) {
+			scopedClaims.TenantID = constant.DashboardSystemScope
 		} else if c.Request.Method == http.MethodGet && isTenantBusinessPath(c.Request.URL.Path) {
 			ids, err := tenantResourceIDs(c)
 			if err != nil {
@@ -120,7 +124,7 @@ func TenantScope() gin.HandlerFunc {
 		}
 		c.Set("claims", &scopedClaims)
 
-		if requestedTenantID == "" && c.Request.Method != http.MethodGet && isTenantBusinessPath(c.Request.URL.Path) {
+		if requestedTenantID == "" && c.Request.Method != http.MethodGet && isTenantBusinessPath(c.Request.URL.Path) && !isDashboardScopePath(c.Request.URL.Path) {
 			c.Error(errcode.NewWithMessage(errcode.CodeParamError, "修改租户资源前请先选择租户"))
 			c.Abort()
 			return
@@ -161,12 +165,20 @@ func guardTenantResources(c *gin.Context, tenantID string) bool {
 func tenantResourceIDs(c *gin.Context) ([]string, error) {
 	ids := make([]string, 0, 8)
 	for _, segment := range strings.Split(c.Request.URL.Path, "/") {
-		segment, _ = url.PathUnescape(segment)
+		decodedSegment, err := url.PathUnescape(segment)
+		if err != nil {
+			return nil, fmt.Errorf("请求路径包含无效转义")
+		}
+		segment = decodedSegment
 		if _, isStatic := staticTenantPathSegments[segment]; len(segment) >= 8 && !isStatic {
 			ids = append(ids, segment)
 		}
 	}
-	for key, values := range c.Request.URL.Query() {
+	query, err := url.ParseQuery(c.Request.URL.RawQuery)
+	if err != nil {
+		return nil, fmt.Errorf("请求查询参数包含无效转义")
+	}
+	for key, values := range query {
 		if !isResourceIDKey(key) {
 			continue
 		}
@@ -226,4 +238,9 @@ func isTenantBusinessPath(path string) bool {
 		}
 	}
 	return false
+}
+
+func isDashboardScopePath(path string) bool {
+	return path == "/api/v1/dashboard-menu" || strings.HasPrefix(path, "/api/v1/dashboard-menu/") ||
+		path == "/api/v1/thingsvis-dashboard" || strings.HasPrefix(path, "/api/v1/thingsvis-dashboard/")
 }

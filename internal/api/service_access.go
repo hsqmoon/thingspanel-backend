@@ -47,7 +47,8 @@ func (*ServiceAccessApi) Update(c *gin.Context) {
 	if !BindAndValidate(c, &req) {
 		return
 	}
-	err := service.GroupApp.ServiceAccess.Update(&req)
+	userClaims := c.MustGet("claims").(*utils.UserClaims)
+	err := service.GroupApp.ServiceAccess.Update(&req, userClaims)
 	if err != nil {
 		c.Error(err)
 		return
@@ -90,7 +91,7 @@ func (*ServiceAccessApi) HandleDeviceList(c *gin.Context) {
 		return
 	}
 	var userClaims = c.MustGet("claims").(*utils.UserClaims)
-	resp, err := service.GroupApp.ServiceAccess.GetServiceAccessDeviceList(&req, userClaims)
+	resp, err := service.GroupApp.ServiceAccess.GetServiceAccessDeviceList(c.Request.Context(), &req, userClaims)
 	if err != nil {
 		c.Error(err)
 		return

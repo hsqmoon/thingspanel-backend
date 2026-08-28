@@ -363,8 +363,7 @@ func (c *AutomateCache) getCacheByDId(deviceId, deviceConfigId, deviceCacheKey s
 			)
 			err := c.client.Get(context.Background(), groupCacheKey).Scan(&condition)
 			if err != nil {
-				logrus.Warning("redis未查询到数据1", err)
-				continue
+				return automateExecuteParams, resultInt, fmt.Errorf("load automation group %s from cache: %w", groupId, err)
 			}
 			automateExecuteSceneInfo.GroupsCondition = append(automateExecuteSceneInfo.GroupsCondition, condition...)
 		}
@@ -374,8 +373,7 @@ func (c *AutomateCache) getCacheByDId(deviceId, deviceConfigId, deviceCacheKey s
 		)
 		err := c.client.Get(context.Background(), actionCacheKey).Scan(&actionInfo)
 		if err != nil {
-			logrus.Warning("redis未查询到数据", err)
-			continue
+			return automateExecuteParams, resultInt, fmt.Errorf("load automation actions %s from cache: %w", info.SceneAutomationId, err)
 		}
 		automateExecuteSceneInfo.Actions = actionInfo.Actions
 		automateExecuteParams.AutomateExecteSceeInfos = append(automateExecuteParams.AutomateExecteSceeInfos, automateExecuteSceneInfo)

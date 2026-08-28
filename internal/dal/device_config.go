@@ -86,7 +86,7 @@ func GetDeviceConfigByID(id string) (*model.DeviceConfig, error) {
 				"module":    "dal.device_config",
 				"cache_key": cacheKey,
 				"error":     err.Error(),
-			}).Warn("failed to cache device config")
+			}).Error("failed to cache device config")
 		}
 	}
 
@@ -275,7 +275,6 @@ func (DeviceConfigVo) PoToVo(deviceConfigInfo *model.DeviceConfig) (info *model.
 // 	}
 // 	now := time.Now().UTC()
 // 	for _, v := range rows {
-// 		logrus.Warning(v.DeviceID)
 // 		var (
 // 			deviceConfigId string
 // 			ok             bool

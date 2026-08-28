@@ -59,7 +59,7 @@ func CreateMQTTClient(config MQTTConfig, logger *logrus.Logger) (mqtt.Client, er
 
 	// 断线回调（仅记录日志，自动重连由 SetAutoReconnect 处理）
 	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
-		logger.WithError(err).Warn("MQTT Adapter connection lost, auto-reconnect will handle it...")
+		logger.WithError(err).Info("MQTT Adapter connection lost; auto-reconnect scheduled")
 	})
 
 	// 重连中回调（可选，帮助追踪重连状态）

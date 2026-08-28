@@ -3,6 +3,7 @@ package dal
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -18,6 +19,47 @@ import (
 
 const deviceBatchDeliveryLease = time.Minute
 
+type DeviceBatchErrorKind string
+
+const (
+	DeviceBatchInvalidInput      DeviceBatchErrorKind = "invalid_input"
+	DeviceBatchOwnershipConflict DeviceBatchErrorKind = "ownership_conflict"
+	DeviceBatchAttributeConflict DeviceBatchErrorKind = "attribute_conflict"
+)
+
+var (
+	ErrDeviceBatchInvalidInput      = errors.New("invalid device batch input")
+	ErrDeviceBatchOwnershipConflict = errors.New("device number ownership conflict")
+	ErrDeviceBatchAttributeConflict = errors.New("device number attribute conflict")
+)
+
+type DeviceBatchError struct {
+	Kind         DeviceBatchErrorKind
+	DeviceNumber string
+	Field        string
+	Reason       string
+}
+
+func (e *DeviceBatchError) Error() string {
+	if e.DeviceNumber != "" {
+		return fmt.Sprintf("device batch %s for %q: %s", e.Kind, e.DeviceNumber, e.Reason)
+	}
+	return fmt.Sprintf("device batch %s: %s", e.Kind, e.Reason)
+}
+
+func (e *DeviceBatchError) Unwrap() error {
+	switch e.Kind {
+	case DeviceBatchInvalidInput:
+		return ErrDeviceBatchInvalidInput
+	case DeviceBatchOwnershipConflict:
+		return ErrDeviceBatchOwnershipConflict
+	case DeviceBatchAttributeConflict:
+		return ErrDeviceBatchAttributeConflict
+	default:
+		return nil
+	}
+}
+
 // CreateDeviceBatch writes devices, their default-group relations and the
 // notification outbox row atomically. Existing device numbers are accepted
 // only when they belong to the same tenant and service access, making a retry
@@ -30,18 +72,30 @@ func createDeviceBatch(db *gorm.DB, devices []*model.Device, outbox *model.Devic
 	if db == nil {
 		return nil, nil, fmt.Errorf("database is not initialized")
 	}
-	if len(devices) == 0 || outbox == nil {
-		return nil, nil, fmt.Errorf("device batch and outbox are required")
+	if len(devices) == 0 {
+		return nil, nil, &DeviceBatchError{Kind: DeviceBatchInvalidInput, Field: "devices", Reason: "at least one device is required"}
+	}
+	if outbox == nil {
+		return nil, nil, &DeviceBatchError{Kind: DeviceBatchInvalidInput, Field: "outbox", Reason: "outbox is required"}
+	}
+	if outbox.TenantID == "" {
+		return nil, nil, &DeviceBatchError{Kind: DeviceBatchInvalidInput, Field: "tenant_id", Reason: "tenant ID is required"}
+	}
+	if outbox.ServiceAccessID == "" {
+		return nil, nil, &DeviceBatchError{Kind: DeviceBatchInvalidInput, Field: "service_access_id", Reason: "service access ID is required"}
 	}
 
 	numbers := make([]string, 0, len(devices))
 	requestedByNumber := make(map[string]*model.Device, len(devices))
 	for _, device := range devices {
-		if device == nil || device.DeviceNumber == "" {
-			return nil, nil, fmt.Errorf("device number is required")
+		if device == nil {
+			return nil, nil, &DeviceBatchError{Kind: DeviceBatchInvalidInput, Field: "device", Reason: "device is required"}
+		}
+		if device.DeviceNumber == "" {
+			return nil, nil, &DeviceBatchError{Kind: DeviceBatchInvalidInput, Field: "device_number", Reason: "device number is required"}
 		}
 		if _, duplicate := requestedByNumber[device.DeviceNumber]; duplicate {
-			return nil, nil, fmt.Errorf("duplicate device number %q", device.DeviceNumber)
+			return nil, nil, &DeviceBatchError{Kind: DeviceBatchInvalidInput, DeviceNumber: device.DeviceNumber, Field: "device_number", Reason: "device number is duplicated in the request"}
 		}
 		numbers = append(numbers, device.DeviceNumber)
 		requestedByNumber[device.DeviceNumber] = device
@@ -78,13 +132,13 @@ func createDeviceBatch(db *gorm.DB, devices []*model.Device, outbox *model.Devic
 				return fmt.Errorf("device %q was not persisted", number)
 			}
 			if row.TenantID != outbox.TenantID || row.ServiceAccessID == nil || *row.ServiceAccessID != outbox.ServiceAccessID {
-				return fmt.Errorf("device number %q is already owned by another tenant or service access", number)
+				return &DeviceBatchError{Kind: DeviceBatchOwnershipConflict, DeviceNumber: number, Field: "device_number", Reason: "device number belongs to another tenant or service access"}
 			}
 			requested := requestedByNumber[number]
 			if row.ID != requested.ID && (!reflect.DeepEqual(row.Name, requested.Name) ||
 				!reflect.DeepEqual(row.DeviceConfigID, requested.DeviceConfigID) ||
 				!reflect.DeepEqual(row.Description, requested.Description)) {
-				return fmt.Errorf("device number %q already exists with different batch attributes", number)
+				return &DeviceBatchError{Kind: DeviceBatchAttributeConflict, DeviceNumber: number, Field: "device_number", Reason: "existing device has different batch attributes"}
 			}
 			persisted = append(persisted, row)
 		}

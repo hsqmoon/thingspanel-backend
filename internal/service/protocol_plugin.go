@@ -6,8 +6,6 @@ import (
 	dal "project/internal/dal"
 	model "project/internal/model"
 	"project/pkg/errcode"
-
-	"github.com/sirupsen/logrus"
 )
 
 type ProtocolPlugin struct{}
@@ -61,7 +59,6 @@ func (*ProtocolPlugin) GetDeviceConfig(req model.GetDeviceConfigReq) (interface{
 		}
 		deviceConfig = dc
 	} else {
-		logrus.Warn("deviceConfigID is nil")
 		return nil, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{
 			"error": "device config not found",
 		})
@@ -101,7 +98,6 @@ func (*ProtocolPlugin) GetDeviceConfig(req model.GetDeviceConfigReq) (interface{
 			deviceConfigForProtocolPlugin.Config = nil
 		}
 	} else {
-		logrus.Warn("deviceConfig is nil")
 		return nil, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{
 			"error": "device config not found",
 		})
@@ -123,7 +119,6 @@ func (*ProtocolPlugin) GetDeviceConfig(req model.GetDeviceConfigReq) (interface{
 			subDeviceConfigForProtocolPlugin.Voucher = subDevice.Voucher
 			subDeviceConfigForProtocolPlugin.DeviceNumber = subDevice.DeviceNumber
 			if subDevice.SubDeviceAddr == nil {
-				logrus.Warn("subDeviceAddr is nil")
 				return nil, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{
 					"error": "subDeviceAddr not found",
 				})
@@ -167,20 +162,21 @@ func (*ProtocolPlugin) GetDeviceConfig(req model.GetDeviceConfigReq) (interface{
 			deviceConfigForProtocolPlugin.SubDivices = append(deviceConfigForProtocolPlugin.SubDivices, subDeviceConfigForProtocolPlugin)
 		}
 	}
-	logrus.Info("deviceConfigForProtocolPlugin:", deviceConfigForProtocolPlugin)
 	return deviceConfigForProtocolPlugin, nil
 }
 
 // 通过协议标识符获取设备列表（包含设备配置信息）
 func (*ProtocolPlugin) GetDevicesByProtocolPlugin(req model.GetDevicesByProtocolPluginReq) (interface{}, error) {
 	var devicesRsp model.GetDevicesByProtocolPluginRsp
-	if req.DeviceType == "1" {
-		err := dal.GetDeviceListByProtocolType(req, &devicesRsp)
-		if err != nil {
-			return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
-				"sql_error": err.Error(),
-			})
-		}
+	if req.DeviceType != "1" {
+		return nil, errcode.WithData(errcode.CodeParamError, map[string]interface{}{
+			"error": "unsupported device type",
+		})
+	}
+	if err := dal.GetDeviceListByProtocolType(req, &devicesRsp); err != nil {
+		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+			"sql_error": err.Error(),
+		})
 	}
 	return devicesRsp, nil
 }

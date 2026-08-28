@@ -295,7 +295,7 @@ func (d *GatewayDevice) GetReceivedMessages(topicPattern string, timeout time.Du
 
 	// 超时后打印调试信息
 	d.mu.RLock()
-	d.logger.Warn("No matching gateway messages found",
+	d.logger.Info("No matching gateway messages found",
 		zap.String("pattern", topicPattern),
 		zap.Int("total_topics", len(d.receivedMessages)))
 	for topic, msgs := range d.receivedMessages {

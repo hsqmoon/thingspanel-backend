@@ -131,7 +131,7 @@ func UpdateDeviceStatus(deviceId string, status int16) (bool, error) {
 
 	// 3. 删除设备缓存，确保下次获取时获取最新数据
 	if err := global.REDIS.Del(context.Background(), deviceId).Err(); err != nil {
-		logrus.WithError(err).WithField("device_id", deviceId).Warn("Failed to delete device cache after status update")
+		logrus.WithError(err).WithField("device_id", deviceId).Error("Failed to delete device cache after status update")
 	}
 
 	// 4. 异步保存状态历史记录（不阻塞主流程）
@@ -141,7 +141,7 @@ func UpdateDeviceStatus(deviceId string, status int16) (bool, error) {
 			logrus.WithError(err).WithFields(logrus.Fields{
 				"device_id": deviceId,
 				"status":    status,
-			}).Warn("Failed to save device status history")
+			}).Error("Failed to save device status history")
 		}
 	}()
 

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"time"
 
@@ -21,6 +22,12 @@ type DataScript struct{}
 
 // DelDataScriptCache 根据脚本删除数据脚本缓存
 func DelDataScriptCache(data_script *model.DataScript) error {
+	if data_script == nil {
+		return errors.New("data script is required")
+	}
+	if global.REDIS == nil {
+		return errors.New("redis is not initialized")
+	}
 	// deviceIDs, err := dal.GetDeviceIDsByDataScriptID(data_script.ID)
 	// if err != nil {
 	// 	logrus.Error(err)
@@ -91,6 +98,12 @@ func (*DataScript) DeleteDataScript(id string) error {
 		})
 	}
 
+	if err = DelDataScriptCache(new_script); err != nil {
+		logrus.Error(err)
+		return errcode.WithData(errcode.CodeCacheError, map[string]interface{}{
+			"cache_error": err.Error(),
+		})
+	}
 	err = dal.DeleteDataScript(id)
 	if err != nil {
 		logrus.Error(err)
@@ -98,10 +111,7 @@ func (*DataScript) DeleteDataScript(id string) error {
 			"sql_error": err.Error(),
 		})
 	}
-	if new_script.EnableFlag == "Y" {
-		_ = DelDataScriptCache(new_script)
-	}
-	return err
+	return nil
 }
 
 func (*DataScript) GetDataScriptListByPage(Params *model.GetDataScriptListByPageReq) (map[string]interface{}, error) {

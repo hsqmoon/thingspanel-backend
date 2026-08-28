@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"hash"
 	"io"
 	"os"
 	"path"
@@ -53,16 +54,26 @@ func FileSign(filePath string, sign string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if sign == "MD5" {
-		hash := md5.New()
-		_, _ = io.Copy(hash, file)
-		return hex.EncodeToString(hash.Sum(nil)), nil
-	} else {
-		hash := sha256.New()
-		_, _ = io.Copy(hash, file)
-		return hex.EncodeToString(hash.Sum(nil)), nil
-	}
+	return fileSign(file, sign)
+}
 
+func fileSign(file io.ReadCloser, sign string) (signature string, err error) {
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+			signature = ""
+		}
+	}()
+	var digest hash.Hash
+	if sign == "MD5" {
+		digest = md5.New()
+	} else {
+		digest = sha256.New()
+	}
+	if _, err = io.Copy(digest, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(digest.Sum(nil)), nil
 }
 
 // 允许的文件扩展名映射

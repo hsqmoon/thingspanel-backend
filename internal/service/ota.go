@@ -179,7 +179,7 @@ func (*OTA) DeleteOTAUpgradePackage(packageId string) error {
 		packagePath := filepath.Clean(strings.TrimPrefix(*ota.PackageURL, "./api/v1/ota/download/"))
 		if packagePath != "." && !filepath.IsAbs(packagePath) && !strings.HasPrefix(packagePath, "..") {
 			if removeErr := os.Remove(packagePath); removeErr != nil && !os.IsNotExist(removeErr) {
-				logrus.WithError(removeErr).Warn("failed to remove OTA package file")
+				logrus.WithError(removeErr).Error("failed to remove OTA package file")
 			}
 		}
 	}

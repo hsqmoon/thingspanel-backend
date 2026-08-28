@@ -7,8 +7,6 @@ import (
 	"project/pkg/errcode"
 	utils "project/pkg/utils"
 
-	"github.com/sirupsen/logrus"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -128,7 +126,11 @@ func (*DeviceApi) HandleDeviceListByPage(c *gin.Context) {
 // @Router   /api/v1/device/check/{deviceNumber} [get]
 func (*DeviceApi) CheckDeviceNumber(c *gin.Context) {
 	deviceNumber := c.Param("deviceNumber")
-	ok, _ := service.GroupApp.Device.CheckDeviceNumber(deviceNumber)
+	ok, err := service.GroupApp.Device.CheckDeviceNumber(deviceNumber)
+	if err != nil {
+		c.Error(err)
+		return
+	}
 	data := map[string]interface{}{"is_available": ok}
 	c.Set("data", data)
 }
@@ -846,10 +848,8 @@ func (*DeviceApi) GatewayRegister(c *gin.Context) {
 func (*DeviceApi) GatewaySubRegister(c *gin.Context) {
 	var req model.DeviceRegisterReq
 	if !BindAndValidate(c, &req) {
-		logrus.Warningf("GatewaySubRegister:%#v", req)
 		return
 	}
-	logrus.Warningf("GatewaySubRegister:%#v", req)
 	data, err := service.GroupApp.Device.GatewayDeviceRegister(req)
 	if err != nil {
 		c.Error(err)

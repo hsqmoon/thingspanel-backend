@@ -232,7 +232,7 @@ func (h *Handler) updateLogStatus(messageID, deviceID, status, errorMsg string, 
 			h.logger.WithError(err).WithFields(logrus.Fields{
 				"message_id": messageID,
 				"device_id":  deviceID,
-			}).Warn("Failed to find command log")
+			}).Error("Failed to find command log")
 			return
 		}
 
@@ -261,7 +261,7 @@ func (h *Handler) updateLogStatus(messageID, deviceID, status, errorMsg string, 
 			h.logger.WithError(err).WithFields(logrus.Fields{
 				"message_id": messageID,
 				"device_id":  deviceID,
-			}).Warn("Failed to find attribute log")
+			}).Error("Failed to find attribute log")
 			return
 		}
 
@@ -287,7 +287,7 @@ func (h *Handler) updateLogStatus(messageID, deviceID, status, errorMsg string, 
 		// 查询遥测下发日志表（使用日志ID作为MessageID）
 		log, err := dal.GetTelemetrySetLogByID(messageID)
 		if err != nil {
-			h.logger.WithError(err).WithField("log_id", messageID).Warn("Failed to find telemetry log")
+			h.logger.WithError(err).WithField("log_id", messageID).Error("Failed to find telemetry log")
 			return
 		}
 
@@ -312,6 +312,6 @@ func (h *Handler) updateLogStatus(messageID, deviceID, status, errorMsg string, 
 		h.logger.WithFields(logrus.Fields{
 			"message_id": messageID,
 			"msg_type":   msgType,
-		}).Warn("Unknown message type for log update")
+		}).Error("Unknown message type for log update")
 	}
 }

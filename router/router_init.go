@@ -38,7 +38,9 @@ func RouterInit() *gin.Engine {
 	// 设置存储实现
 	m.SetHistoryStorage(memStorage)
 	// 开始定期收集系统指标(每15秒)
-	m.StartMetricsCollection(15 * time.Second)
+	if err := m.StartMetricsCollection(15 * time.Second); err != nil {
+		logrus.Fatalf("初始化系统指标采集失败: %v", err)
+	}
 	// 注册 metrics 中间件
 	router.Use(middleware.MetricsMiddleware(m))
 	// 注册 prometheus metrics 接口
@@ -155,7 +157,8 @@ func RouterInit() *gin.Engine {
 
 			apps.Model.Board.InitBoard(v1) // 首页
 
-			apps.Model.DashboardMenu.Init(v1) // 仪表盘菜单绑定
+			apps.Model.DashboardMenu.Init(v1)   // 仪表盘菜单绑定
+			apps.Model.DashboardDelete.Init(v1) // ThingsVis 仪表盘持久化删除
 
 			apps.Model.EventData.InitEventData(v1) // 事件数据
 

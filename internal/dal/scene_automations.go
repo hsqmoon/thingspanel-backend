@@ -116,17 +116,28 @@ func GetSceneAutomationWithAlarmByPageReq(req *model.GetSceneAutomationsWithAlar
 	ctx := context.Background()
 	queryBuilder := q.WithContext(ctx)
 	if !common.IsStringEmpty(req.DeviceId) {
-		sceneIds, _ = getSceneAutomationIdByDeviceId(ctx, *req.DeviceId)
+		var err error
+		sceneIds, err = getSceneAutomationIdByDeviceId(ctx, *req.DeviceId)
+		if err != nil {
+			return count, nil, err
+		}
 		deviceConfig, err := GetDeviceByID(*req.DeviceId)
 		if err != nil {
 			return count, nil, err
 		}
 		if deviceConfig.DeviceConfigID != nil && *deviceConfig.DeviceConfigID != "" {
-			sceneIds2, _ := getSceneAutomationIdByDeviceConfigId(ctx, *deviceConfig.DeviceConfigID)
+			sceneIds2, queryErr := getSceneAutomationIdByDeviceConfigId(ctx, *deviceConfig.DeviceConfigID)
+			if queryErr != nil {
+				return count, nil, queryErr
+			}
 			sceneIds = append(sceneIds, sceneIds2...)
 		}
 	} else {
-		sceneIds, _ = getSceneAutomationIdByDeviceConfigId(ctx, *req.DeviceConfigId)
+		var err error
+		sceneIds, err = getSceneAutomationIdByDeviceConfigId(ctx, *req.DeviceConfigId)
+		if err != nil {
+			return count, nil, err
+		}
 	}
 
 	if len(sceneIds) == 0 {
@@ -172,7 +183,6 @@ func getSceneAutomationIdByDeviceId(ctx context.Context, deviceId string) ([]str
 	}
 
 	for _, v := range result {
-		logrus.Warning(v)
 		sceneIds = append(sceneIds, v.SceneAutomationID)
 	}
 	var result2 []model.ActionInfo
@@ -210,15 +220,24 @@ func getSceneAutomationIdByDeviceConfigId(ctx context.Context, deviceConfigId st
 	return sceneIds, nil
 }
 
-func CheckSceneAutomationHasClose(id string) bool {
-	index, _ := query.SceneAutomation.Where(query.SceneAutomation.ID.Eq(id), query.SceneAutomation.Enabled.Eq("N")).Count()
-	return index == 1
+func CheckSceneAutomationHasClose(id string) (bool, error) {
+	count, err := query.SceneAutomation.Where(query.SceneAutomation.ID.Eq(id), query.SceneAutomation.Enabled.Eq("N")).Count()
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
-func GetSceneAutomationTenantID(ctx context.Context, scene_id string) string {
+func GetSceneAutomationTenantID(ctx context.Context, scene_id string) (string, error) {
 	//todo 增加缓存
 	var tenantID string
-	query.SceneAutomation.WithContext(ctx).Where(query.SceneAutomation.ID.Eq(scene_id)).Select(query.SceneAutomation.TenantID).Scan(&tenantID)
-	return tenantID
+	err := query.SceneAutomation.WithContext(ctx).Where(query.SceneAutomation.ID.Eq(scene_id)).Select(query.SceneAutomation.TenantID).Scan(&tenantID)
+	if err != nil {
+		return "", err
+	}
+	if tenantID == "" {
+		return "", fmt.Errorf("scene automation %s not found", scene_id)
+	}
+	return tenantID, nil
 
 }

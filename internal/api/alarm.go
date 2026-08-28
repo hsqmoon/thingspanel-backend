@@ -172,7 +172,11 @@ func (*AlarmApi) HandleDeviceAlarmStatus(c *gin.Context) {
 	}
 	// var userClaims = c.MustGet("claims").(*utils.UserClaims)
 
-	ok := service.GroupApp.Alarm.GetDeviceAlarmStatus(&req)
+	ok, err := service.GroupApp.Alarm.GetDeviceAlarmStatus(&req)
+	if err != nil {
+		c.Error(err)
+		return
+	}
 	c.Set("data", map[string]bool{
 		"alarm": ok,
 	})

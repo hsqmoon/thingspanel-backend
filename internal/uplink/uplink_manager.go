@@ -133,7 +133,7 @@ func (m *UplinkManager) Stop(timeout time.Duration) error {
 	// 等待停止完成或超时
 	select {
 	case <-ctx.Done():
-		m.logger.Warn("UplinkManager stop timeout")
+		m.logger.Error("UplinkManager stop timeout")
 		return ctx.Err()
 	case <-time.After(100 * time.Millisecond):
 		// 给一点时间让 goroutine 清理

@@ -1,9 +1,10 @@
 package constant
 
 const (
-	SYS_ADMIN    string = "SYS_ADMIN"    // 系统管理员
-	TENANT_USER  string = "TENANT_USER"  // 租户用户
-	TENANT_ADMIN string = "TENANT_ADMIN" // 租户系统管理员
+	SYS_ADMIN            string = "SYS_ADMIN"    // 系统管理员
+	TENANT_USER          string = "TENANT_USER"  // 租户用户
+	TENANT_ADMIN         string = "TENANT_ADMIN" // 租户系统管理员
+	DashboardSystemScope string = "thingspanel-sys-admin"
 )
 
 const EMPTY string = ""

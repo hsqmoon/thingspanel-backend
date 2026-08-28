@@ -218,11 +218,6 @@ func (*UsersService) UpdateTenantInfo(ctx context.Context, userInfo *utils.UserC
 // @AUTHOR:zxq
 // @DATE: 2024-03-05 13:04
 func (*UsersService) UpdateTenantInfoPassword(ctx context.Context, userInfo *utils.UserClaims, param *model.UsersUpdatePasswordReq) error {
-	// test@test.cn不允许修改密码
-	if userInfo.Email == "test@test.cn" {
-		return errcode.New(200044) // 使用新增的"不允许修改密码"错误码
-	}
-
 	// 密码格式校验
 	err := utils.ValidatePassword(param.Password)
 	if err != nil {
@@ -253,7 +248,11 @@ func (*UsersService) UpdateTenantInfoPassword(ctx context.Context, userInfo *uti
 	}
 
 	// 验证旧密码
-	if !utils.BcryptCheck(param.OldPassword, info.Password) {
+	passwordMatches, err := utils.BcryptCheck(param.OldPassword, info.Password)
+	if err != nil {
+		return errcode.WithData(errcode.CodeDecryptError, map[string]interface{}{"error": err.Error()})
+	}
+	if !passwordMatches {
 		return errcode.New(200045) // 使用新增的"旧密码验证失败"错误码
 	}
 
@@ -261,7 +260,11 @@ func (*UsersService) UpdateTenantInfoPassword(ctx context.Context, userInfo *uti
 	info.UpdatedAt = &t
 	info.PasswordLastUpdated = &t
 
-	info.Password = utils.BcryptHash(param.Password)
+	hashedPassword, err := utils.BcryptHash(param.Password)
+	if err != nil {
+		return errcode.WithData(errcode.CodeDecryptError, map[string]interface{}{"error": err.Error()})
+	}
+	info.Password = hashedPassword
 	if err = db.UpdateByEmail(ctx, info, user.Password, user.UpdatedAt, user.PasswordLastUpdated); err != nil {
 		logrus.Error(ctx, "[UpdateTenantInfoPassword]Update Users info failed:", err)
 		return errcode.WithData(101001, map[string]interface{}{

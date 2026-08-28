@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -103,7 +104,7 @@ func (n *NotificationServicesConfig) sendWebhookMessage(payloadURL, secret, aler
 			successStatus := "SUCCESS"
 			_, updateErr := dal.UpdateNotificationHistory(historyID, &successStatus, nil)
 			if updateErr != nil {
-				logrus.Error("更新webhook通知历史记录失败:", updateErr)
+				return fmt.Errorf("update successful webhook notification history: %w", updateErr)
 			}
 			logrus.Info("Webhook发送成功:", payloadURL)
 			return nil
@@ -120,7 +121,7 @@ func (n *NotificationServicesConfig) sendWebhookMessage(payloadURL, secret, aler
 	// 更新记录的内容和状态
 	_, updateErr := dal.UpdateNotificationHistoryWithContent(historyID, &failureStatus, &remarkText, &errorContent)
 	if updateErr != nil {
-		logrus.Error("更新webhook通知历史记录失败:", updateErr)
+		return errors.Join(lastErr, fmt.Errorf("update failed webhook notification history: %w", updateErr))
 	}
 
 	return lastErr
@@ -210,29 +211,31 @@ func (n *NotificationServicesConfig) handleMemberNotification(notificationGroup 
 				// 获取成员的所有推送管理信息（支持多设备）
 				pushManages, err := dal.GetUserMessagePushManages(userId)
 				if err != nil {
-					logrus.Warn("查询用户推送记录失败:", userName, err)
 					// 记录失败的通知历史
 					pushTarget := fmt.Sprintf("用户:%s", userName)
 					pushContent := subject // 只保存标题，详细内容可以通过其他途径查询
 					remark := fmt.Sprintf("查询推送记录失败: %v | 详细内容: %s", err, content)
-					n.saveNotificationHistory("APP", tenantID, pushTarget, pushContent, "FAILURE", &remark)
-					continue
+					if historyErr := n.saveNotificationHistory("APP", tenantID, pushTarget, pushContent, "FAILURE", &remark); historyErr != nil {
+						return errors.Join(err, historyErr)
+					}
+					return err
 				}
 
 				if len(pushManages) == 0 {
-					logrus.Warn("用户未绑定推送ID:", userName, "跳过APP推送")
 					// 记录失败的通知历史
 					pushTarget := fmt.Sprintf("用户:%s", userName)
 					pushContent := subject // 只保存标题，详细内容可以通过其他途径查询
 					remark := fmt.Sprintf("用户未绑定推送ID | 详细内容: %s", content)
-					n.saveNotificationHistory("APP", tenantID, pushTarget, pushContent, "FAILURE", &remark)
+					if err := n.saveNotificationHistory("APP", tenantID, pushTarget, pushContent, "SKIPPED", &remark); err != nil {
+						return err
+					}
 					continue
 				}
 
 				// 对用户的每个推送记录都发送推送（支持多设备）
+				sent := 0
 				for _, pushManage := range pushManages {
 					if pushManage.PushID == "" {
-						logrus.Warn("用户推送ID为空:", userName, "设备类型:", pushManage.DeviceType, "跳过")
 						continue
 					}
 
@@ -249,15 +252,27 @@ func (n *NotificationServicesConfig) handleMemberNotification(notificationGroup 
 					}
 
 					// 调用消息推送服务并记录日志
-					GroupApp.MessagePush.MessagePushSendAndLog(message, *pushManage, 2) // 2表示通知推送
+					if err := GroupApp.MessagePush.MessagePushSendAndLog(message, *pushManage, 2); err != nil {
+						return err
+					}
+					sent++
 				}
 
 				// 记录APP推送通知历史（成功发送给至少一个设备）
 				pushTarget := fmt.Sprintf("用户:%s", userName)
 				pushContent := subject
-				n.saveNotificationHistory("APP", tenantID, pushTarget, pushContent, "SUCCESS", nil)
+				status := "SUCCESS"
+				var remark *string
+				if sent == 0 {
+					status = "SKIPPED"
+					text := "用户所有推送ID均为空"
+					remark = &text
+				}
+				if err := n.saveNotificationHistory("APP", tenantID, pushTarget, pushContent, status, remark); err != nil {
+					return err
+				}
 			default:
-				logrus.Warn("不支持的成员通知类型:", notifyType)
+				return fmt.Errorf("unsupported member notification type: %s", notifyType)
 			}
 		}
 	}
@@ -399,30 +414,34 @@ func sendEmailMessage(message string, subject string, tenantId string, to ...str
 	if err := d.DialAndSend(m); err != nil {
 		logrus.Error("邮件发送失败:", err)
 		remark := err.Error()
-		nsc.saveNotificationHistory(model.NoticeType_Email, tenantId, to[0], message, "FAILURE", &remark)
+		if historyErr := nsc.saveNotificationHistory(model.NoticeType_Email, tenantId, to[0], message, "FAILURE", &remark); historyErr != nil {
+			return errors.Join(err, historyErr)
+		}
 		return err
 	} else {
 		logrus.Info("邮件发送成功:", to[0])
-		nsc.saveNotificationHistory(model.NoticeType_Email, tenantId, to[0], message, "SUCCESS", nil)
+		if err := nsc.saveNotificationHistory(model.NoticeType_Email, tenantId, to[0], message, "SUCCESS", nil); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 // Send notification
-func (*NotificationServicesConfig) ExecuteNotification(notificationGroupId, alertJson string) {
+func (*NotificationServicesConfig) ExecuteNotification(notificationGroupId, alertJson string) error {
 	logrus.Info("开始执行通知，通知组ID:", notificationGroupId)
 
 	notificationGroup, err := dal.GetNotificationGroupById(notificationGroupId)
 	if err != nil {
 		logrus.Error("获取通知组失败:", err)
-		return
+		return err
 	}
 
 	logrus.Info("通知组类型:", notificationGroup.NotificationType, "状态:", notificationGroup.Status)
 
 	if notificationGroup.Status != "OPEN" {
 		logrus.Info("通知组未开启:", notificationGroupId)
-		return
+		return nil
 	}
 
 	// 解析通知JSON获取基本信息
@@ -430,7 +449,7 @@ func (*NotificationServicesConfig) ExecuteNotification(notificationGroupId, aler
 	err = json.Unmarshal([]byte(alertJson), &alertData)
 	if err != nil {
 		logrus.Error("解析告警JSON失败:", err)
-		return
+		return err
 	}
 
 	subject, _ := alertData["subject"].(string)
@@ -446,15 +465,14 @@ func (*NotificationServicesConfig) ExecuteNotification(notificationGroupId, aler
 			nsc := &NotificationServicesConfig{}
 			err := nsc.handleMemberNotification(notificationGroup, alertJson, subject, content, notificationGroup.TenantID)
 			if err != nil {
-				logrus.Error("成员通知处理失败:", err)
+				return err
 			}
 
 		case model.NoticeType_Email:
 			nConfig := make(map[string]string)
 			err := json.Unmarshal([]byte(*notificationGroup.NotificationConfig), &nConfig)
 			if err != nil {
-				logrus.Error("解析邮件配置失败:", err)
-				continue
+				return err
 			}
 
 			// 邮件特定格式：添加邮件签名
@@ -469,8 +487,10 @@ func (*NotificationServicesConfig) ExecuteNotification(notificationGroupId, aler
 						// 在JSON后追加错误信息
 						errorContent := alertJson + "; 邮件发送失败: " + err.Error()
 						nsc := &NotificationServicesConfig{}
-						nsc.saveNotificationHistory(model.NoticeType_Email, notificationGroup.TenantID, emailAddr, errorContent, "FAILURE", nil)
-						logrus.Error("发送邮件失败:", err)
+						if historyErr := nsc.saveNotificationHistory(model.NoticeType_Email, notificationGroup.TenantID, emailAddr, errorContent, "FAILURE", nil); historyErr != nil {
+							return errors.Join(err, historyErr)
+						}
+						return err
 					}
 				}
 			}
@@ -483,23 +503,22 @@ func (*NotificationServicesConfig) ExecuteNotification(notificationGroupId, aler
 			var nConfig WebhookConfig
 			err = json.Unmarshal([]byte(*notificationGroup.NotificationConfig), &nConfig)
 			if err != nil {
-				logrus.Error("解析Webhook配置失败:", err)
-				continue
+				return err
 			}
 
 			// 使用新的webhook发送方法，传递原始JSON
 			nsc := &NotificationServicesConfig{}
 			err = nsc.sendWebhookMessage(nConfig.PayloadURL, nConfig.Secret, alertJson, notificationGroup.TenantID)
 			if err != nil {
-				logrus.Error("Webhook通知发送失败:", err)
+				return err
 			}
 
 		case "APP":
-			// 移除直接APP类型通知：根据需求文档，只有MEMBER类型支持APP通知
-			logrus.Warn("直接APP类型通知已被移除，请使用MEMBER类型并在成员配置中选择APP通知")
+			return errors.New("direct APP notifications are unsupported; use MEMBER APP notifications")
 
 		default:
-			logrus.Warn("未支持的通知类型:", notifyType)
+			return fmt.Errorf("unsupported notification type: %s", notifyType)
 		}
 	}
+	return nil
 }

@@ -296,6 +296,9 @@ messages:
   204005:
     zh_CN: "凭证已存在"
     en_US: "Voucher already exists"
+  204006:
+    zh_CN: "设备编号与已有设备的属性冲突"
+    en_US: "Device number conflicts with the existing device attributes"
 
   # WebSocket相关错误码 (205xxx)
   205001:

@@ -11,6 +11,7 @@ type CreateAccessReq struct {
 
 type UpdateAccessReq struct {
 	ID                  string  `json:"id" binding:"required"`
+	IdempotencyKey      string  `json:"idempotency_key" binding:"required,uuid"`
 	ServiceAccessConfig *string `json:"service_access_config"`
 	Name                *string `json:"name"`
 	Voucher             *string `json:"voucher"`
@@ -29,10 +30,10 @@ type GetServiceAccessVoucherFormReq struct {
 	ServicePluginID string `json:"service_plugin_id" form:"service_plugin_id"  binding:"required"`
 }
 
-// 服务接入点设备列表 voucher page_size page
+// 服务接入点设备列表 service_access_id page_size page
 type ServiceAccessDeviceListReq struct {
 	PageReq
-	Voucher string `json:"voucher" form:"voucher" binding:"required"`
+	ServiceAccessID string `json:"service_access_id" form:"service_access_id" binding:"required"`
 }
 
 type GetPluginServiceAccessListReq struct {

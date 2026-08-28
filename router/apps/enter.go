@@ -34,6 +34,7 @@ type apps struct {
 	SystemMonitor // 系统监控
 	DeviceAuth    // 设备动态认证
 	DashboardMenu
+	DashboardDelete
 }
 
 var Model = new(apps)

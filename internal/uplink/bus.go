@@ -105,7 +105,7 @@ func (b *Bus) Publish(msgInterface MessageLike) error {
 	b.mu.RLock()
 	if b.closed {
 		b.mu.RUnlock()
-		b.logger.Warn("Bus is closed, message dropped")
+		b.logger.Error("Bus is closed, message dropped")
 		return ErrBusClosed
 	}
 	b.mu.RUnlock()
@@ -119,7 +119,7 @@ func (b *Bus) Publish(msgInterface MessageLike) error {
 			// 发送成功
 		default:
 			// channel 满了，阻塞发送（背压机制）
-			b.logger.Warnf("【设备遥测】Telemetry channel full, blocking publish")
+			b.logger.Errorf("【设备遥测】Telemetry channel full, blocking publish")
 			b.telemetryChan <- msg
 		}
 
@@ -127,7 +127,7 @@ func (b *Bus) Publish(msgInterface MessageLike) error {
 		select {
 		case b.attributeChan <- msg:
 		default:
-			b.logger.Warnf("【设备属性】Attribute channel full, blocking publish")
+			b.logger.Errorf("【设备属性】Attribute channel full, blocking publish")
 			b.attributeChan <- msg
 		}
 
@@ -135,7 +135,7 @@ func (b *Bus) Publish(msgInterface MessageLike) error {
 		select {
 		case b.eventChan <- msg:
 		default:
-			b.logger.Warnf("【设备事件】Event channel full, blocking publish")
+			b.logger.Errorf("【设备事件】Event channel full, blocking publish")
 			b.eventChan <- msg
 		}
 
@@ -144,7 +144,7 @@ func (b *Bus) Publish(msgInterface MessageLike) error {
 		case b.statusChan <- msg:
 			b.logger.Debug("【设备上下线】Status message sent to statusChan")
 		default:
-			b.logger.Warnf("【设备上下线】Status channel full, blocking publish")
+			b.logger.Errorf("【设备上下线】Status channel full, blocking publish")
 			b.statusChan <- msg
 			b.logger.Debug("【设备上下线】Status message sent (after blocking)")
 		}
@@ -173,7 +173,7 @@ func (b *Bus) PublishResponse(msg *DeviceMessage) error {
 		b.logger.WithFields(logrus.Fields{
 			"device_id": msg.DeviceID,
 			"type":      msg.Type,
-		}).Warn("Response channel is full, message dropped")
+		}).Error("Response channel is full, message dropped")
 		return ErrChannelFull
 	}
 }

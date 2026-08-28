@@ -449,6 +449,15 @@ func TestBundleKindConstants(t *testing.T) {
 	}
 }
 
+func TestParseMarketDashboardBindingsRejectsMalformedJSON(t *testing.T) {
+	if _, _, err := parseMarketDashboardBindings(json.RawMessage(`{"bindingKey":`), nil); err == nil {
+		t.Fatal("expected malformed device bindings error")
+	}
+	if _, _, err := parseMarketDashboardBindings(nil, json.RawMessage(`{"bindingKey":`)); err == nil {
+		t.Fatal("expected malformed field bindings error")
+	}
+}
+
 func TestContractVersion(t *testing.T) {
 	if ContractVersion != "1.0" {
 		t.Errorf("Expected contract version 1.0, got %s", ContractVersion)

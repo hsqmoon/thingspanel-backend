@@ -70,7 +70,7 @@ func (s *storage) Stop(timeout time.Duration) error {
 	case <-s.doneCh:
 		s.logger.Info("storage main loop stopped")
 	case <-time.After(timeout):
-		s.logger.Warn("storage main loop stop timeout")
+		s.logger.Error("storage main loop stop timeout")
 	}
 
 	s.telemetryWriter.stop(timeout)
@@ -126,6 +126,6 @@ func (s *storage) handleMessage(msg *Message) {
 		}
 
 	default:
-		s.logger.Warnf("unknown data type: %s", msg.DataType)
+		s.logger.Errorf("unknown data type: %s", msg.DataType)
 	}
 }

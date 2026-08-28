@@ -311,7 +311,7 @@ func validateAuth(msgMap map[string]interface{}) (*utils.UserClaims, error) {
 				return claims, nil
 			} else {
 				tokenErr = err
-				logrus.Warnf("Token validation failed: %v", err)
+				logrus.Infof("Token validation rejected: %v", err)
 			}
 		}
 	}
@@ -326,7 +326,7 @@ func validateAuth(msgMap map[string]interface{}) (*utils.UserClaims, error) {
 				return claims, nil
 			} else {
 				apiKeyErr = err
-				logrus.Warnf("API Key validation failed for key %s: %v", k, err)
+				logrus.Infof("API Key validation rejected for key %s: %v", k, err)
 			}
 		}
 	}
@@ -438,7 +438,7 @@ func (*TelemetryDataApi) ServeCurrentDataByWS(c *gin.Context) {
 	go func(c *global.WSClient) {
 		defer func() {
 			if r := recover(); r != nil {
-				logrus.WithField("conn_id", c.ConnID).Warnf("writer goroutine recovered: %v", r)
+				logrus.WithField("conn_id", c.ConnID).Errorf("writer goroutine recovered: %v", r)
 			}
 		}()
 		for b := range c.Send {
@@ -479,7 +479,7 @@ func (*TelemetryDataApi) ServeCurrentDataByWS(c *gin.Context) {
 		select {
 		case wsClient.Send <- dataByte:
 		default:
-			logrus.WithField("conn_id", connID).Warn("initial telemetry send buffer full, dropping initial data")
+			logrus.WithField("conn_id", connID).Error("initial telemetry send buffer full, initial data dropped")
 		}
 	}
 
@@ -496,7 +496,7 @@ func (*TelemetryDataApi) ServeCurrentDataByWS(c *gin.Context) {
 		case <-heartbeatTicker.C:
 			// 检查心跳超时
 			if time.Since(lastPingTime) > heartbeatTimeout {
-				logrus.Warnf("WebSocket心跳超时，断开连接 - 设备ID: %s, 最后ping时间: %v",
+				logrus.Infof("WebSocket心跳超时，断开连接 - 设备ID: %s, 最后ping时间: %v",
 					deviceID, lastPingTime.Format("2006-01-02 15:04:05"))
 
 				// 发送关闭消息
@@ -656,7 +656,7 @@ func (*TelemetryDataApi) ServeDeviceStatusByWS(c *gin.Context) {
 	go func(c *global.WSClient) {
 		defer func() {
 			if r := recover(); r != nil {
-				logrus.WithField("conn_id", c.ConnID).Warnf("writer goroutine recovered: %v", r)
+				logrus.WithField("conn_id", c.ConnID).Errorf("writer goroutine recovered: %v", r)
 			}
 		}()
 		for b := range c.Send {
@@ -675,7 +675,7 @@ func (*TelemetryDataApi) ServeDeviceStatusByWS(c *gin.Context) {
 		select {
 		case localClient.Send <- data:
 		default:
-			logrus.WithField("conn_id", localClient.ConnID).Warn("status initial send buffer full, dropping initial data")
+			logrus.WithField("conn_id", localClient.ConnID).Error("status initial send buffer full, initial data dropped")
 		}
 	}
 
@@ -701,7 +701,7 @@ func (*TelemetryDataApi) ServeDeviceStatusByWS(c *gin.Context) {
 				return
 			case redisMsg, ok := <-ch:
 				if !ok {
-					logrus.Warn("Redis通道已关闭")
+					logrus.Info("Redis通道已正常关闭")
 					return
 				}
 
@@ -711,7 +711,7 @@ func (*TelemetryDataApi) ServeDeviceStatusByWS(c *gin.Context) {
 				case localClient.Send <- payload:
 				default:
 					// 如果写队列已满，记录并丢弃，避免阻塞Redis消息处理
-					logrus.WithField("device_id", deviceID).Warn("status send buffer full, dropping update")
+					logrus.WithField("device_id", deviceID).Error("status send buffer full, update dropped")
 				}
 				logrus.WithField("device_id", deviceID).Debug("状态更新已排入发送队列")
 			}
@@ -861,7 +861,7 @@ func (*TelemetryDataApi) ServeCurrentDataByKey(c *gin.Context) {
 	go func(c *global.WSClient) {
 		defer func() {
 			if r := recover(); r != nil {
-				logrus.WithField("conn_id", c.ConnID).Warnf("writer goroutine recovered: %v", r)
+				logrus.WithField("conn_id", c.ConnID).Errorf("writer goroutine recovered: %v", r)
 			}
 		}()
 		for b := range c.Send {
@@ -891,7 +891,7 @@ func (*TelemetryDataApi) ServeCurrentDataByKey(c *gin.Context) {
 		select {
 		case wsClient.Send <- dataByte:
 		default:
-			logrus.WithField("conn_id", connID).Warn("initial telemetry send buffer full, dropping initial data")
+			logrus.WithField("conn_id", connID).Error("initial telemetry send buffer full, initial data dropped")
 		}
 	}
 
@@ -908,7 +908,7 @@ func (*TelemetryDataApi) ServeCurrentDataByKey(c *gin.Context) {
 		case <-heartbeatTicker.C:
 			// 检查心跳超时
 			if time.Since(lastPingTime) > heartbeatTimeout {
-				logrus.Warnf("WebSocket心跳超时，断开连接 - 设备ID: %s, 最后ping时间: %v",
+				logrus.Infof("WebSocket心跳超时，断开连接 - 设备ID: %s, 最后ping时间: %v",
 					deviceID, lastPingTime.Format("2006-01-02 15:04:05"))
 
 				// 发送关闭消息

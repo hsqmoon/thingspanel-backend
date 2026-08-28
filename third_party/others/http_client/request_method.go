@@ -6,58 +6,40 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
-// Post 发送post请求
-func Post(targetUrl string, payload string) (*http.Response, error) {
-	req, _ := http.NewRequest("POST", targetUrl, strings.NewReader(payload))
-	req.Header.Add("Content-Type", "application/json")
-	response, err := http.DefaultClient.Do(req)
-	if err != nil {
-		logrus.Info(err.Error())
-	}
-	return response, err
-}
+const maxPluginHTTPResponseBytes int64 = 4 << 20
 
-// Delete 发送delete请求
-func Delete(targetUrl string, payload string) (*http.Response, error) {
-	logrus.Info("Delete:", targetUrl, payload)
-	req, _ := http.NewRequest("DELETE", targetUrl, strings.NewReader(payload))
-	req.Header.Add("Content-Type", "application/json")
-	response, err := http.DefaultClient.Do(req)
-	if err == nil {
-		logrus.Info(response.Body)
-	} else {
-		logrus.Info(err.Error())
-	}
-	return response, err
-}
+var pluginHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
 // Get 发送get请求
 func Get(url string) ([]byte, error) {
-	resp, err := http.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		logrus.Error(err.Error())
+		return nil, err
+	}
+	resp, err := pluginHTTPClient.Do(req)
+	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode == 200 {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-		logrus.Info("Response: ", string(body))
-		return body, err
-	} else {
-		return nil, errors.New("Get failed with error: " + resp.Status)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET failed with status %s", resp.Status)
 	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPluginHTTPResponseBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > maxPluginHTTPResponseBytes {
+		return nil, fmt.Errorf("GET response exceeds %d bytes", maxPluginHTTPResponseBytes)
+	}
+	return body, nil
 }
 
 // PostWithHeader 发送带有header的post请求
@@ -67,7 +49,7 @@ func PostJson(targetUrl string, payload []byte) (*http.Response, error) {
 		return nil, err
 	}
 	req.Header.Add("Content-Type", "application/json")
-	response, err := http.DefaultClient.Do(req)
+	response, err := pluginHTTPClient.Do(req)
 	return response, err
 }
 
@@ -77,31 +59,6 @@ func generateHMAC(message, secret string) string {
 	h.Write([]byte(message))
 	signature := h.Sum(nil)
 	return hex.EncodeToString(signature)
-}
-
-// SendSignedRequest 发送带签名的请求
-func SendSignedRequest(url, message, secret string) error {
-	signature := generateHMAC(message, secret)
-
-	// Creating the request
-	req, err := http.NewRequest("POST", url, bytes.NewBufferString(message))
-	if err != nil {
-		return fmt.Errorf("创建请求失败: %v", err)
-	}
-
-	// Adding the signature to the request header
-	req.Header.Set("X-Signature-256", "sha256="+signature)
-	req.Header.Set("Content-Type", "application/json")
-	// Sending the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("发送请求失败: %v", err)
-	}
-	defer resp.Body.Close()
-
-	fmt.Printf("请求已发送。状态码: %d\n", resp.StatusCode)
-	return nil
 }
 
 // SendSignedRequestWithTimeout 发送带签名和超时的请求
@@ -117,10 +74,9 @@ func SendSignedRequestWithTimeout(ctx context.Context, url, message, secret stri
 	// Adding the signature to the request header
 	req.Header.Set("X-Signature-256", "sha256="+signature)
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// Sending the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := pluginHTTPClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("发送请求失败: %v", err)
 	}

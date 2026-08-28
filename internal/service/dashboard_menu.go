@@ -6,6 +6,7 @@ import (
 
 	dal "project/internal/dal"
 	model "project/internal/model"
+	"project/pkg/constant"
 	"project/pkg/errcode"
 	utils "project/pkg/utils"
 
@@ -14,6 +15,21 @@ import (
 )
 
 type DashboardMenu struct{}
+
+const SystemAdminDashboardScopeID = constant.DashboardSystemScope
+
+func ResolveDashboardScope(claims *utils.UserClaims) (string, error) {
+	if claims == nil {
+		return "", errcode.NewWithMessage(errcode.CodeNoPermission, "dashboard scope requires authentication")
+	}
+	if tenantID := strings.TrimSpace(claims.TenantID); tenantID != "" {
+		return tenantID, nil
+	}
+	if claims.Authority == "SYS_ADMIN" {
+		return SystemAdminDashboardScopeID, nil
+	}
+	return "", errcode.NewWithMessage(errcode.CodeNoPermission, "dashboard scope is unavailable")
+}
 
 func validateDashboardMenuAccess(tenantID string, dashboardID string) error {
 	normalizedTenantID := strings.TrimSpace(tenantID)
@@ -47,7 +63,11 @@ func (*DashboardMenu) GetTenantDashboardMenu(tenantID string, dashboardID string
 }
 
 func (*DashboardMenu) UpsertTenantDashboardMenu(claims *utils.UserClaims, dashboardID string, req *model.UpsertTenantDashboardMenuReq) (*model.TenantDashboardMenuRsp, error) {
-	if err := validateDashboardMenuAccess(claims.TenantID, dashboardID); err != nil {
+	tenantID, err := ResolveDashboardScope(claims)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateDashboardMenuAccess(tenantID, dashboardID); err != nil {
 		return nil, err
 	}
 
@@ -66,7 +86,7 @@ func (*DashboardMenu) UpsertTenantDashboardMenu(claims *utils.UserClaims, dashbo
 		dashboardName = *req.DashboardName
 	}
 
-	existing, err := dal.GetTenantDashboardMenu(claims.TenantID, dashboardID)
+	existing, err := dal.GetTenantDashboardMenu(tenantID, dashboardID)
 	if err != nil {
 		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
 			"operation": "get_dashboard_menu_before_upsert",
@@ -77,7 +97,7 @@ func (*DashboardMenu) UpsertTenantDashboardMenu(claims *utils.UserClaims, dashbo
 	now := time.Now().UTC()
 	menu := model.TenantDashboardMenu{
 		ID:            uuid.NewString(),
-		TenantID:      claims.TenantID,
+		TenantID:      tenantID,
 		DashboardID:   dashboardID,
 		DashboardName: dashboardName,
 		MenuName:      req.MenuName,

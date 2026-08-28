@@ -179,7 +179,7 @@ func (m *WSManager) PushToDevice(deviceID string, data map[string]interface{}) {
 			logrus.WithFields(logrus.Fields{
 				"device_id": deviceID,
 				"conn_id":   connID,
-			}).Warn("WebSocket send buffer full, dropping message")
+			}).Error("WebSocket send buffer full, message dropped")
 		}
 	}
 }
@@ -200,7 +200,7 @@ func (m *WSManager) ListenForEvents() {
 		for {
 			msg, err := pubsub.ReceiveMessage(ctx)
 			if err != nil {
-				logrus.WithError(err).Warnf("WS: Redis pubsub error, reconnecting in %v", backoff)
+				logrus.WithError(err).Errorf("WS: Redis pubsub error, reconnecting in %v", backoff)
 				time.Sleep(backoff)
 				backoff = min(backoff*2, maxBackoff)
 				break

@@ -49,7 +49,7 @@ definitions:
     properties:
       email:
         description: 登录账号(输入邮箱或者手机号)
-        example: test@test.cn
+        example: admin@nsnr.chat
         type: string
       password:
         description: 密码

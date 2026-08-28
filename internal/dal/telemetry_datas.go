@@ -286,7 +286,7 @@ func DeleteTelemetrDataByTime(t int64) error {
 		return err
 	} else {
 		if err := global.DB.Exec("VACUUM FULL telemetry_datas").Error; err != nil {
-			logrus.Warnf("Error during VACUUM FULL: %v", err)
+			logrus.Errorf("Error during VACUUM FULL: %v", err)
 		}
 		return err
 	}

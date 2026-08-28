@@ -2,6 +2,7 @@
 package metrics
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 	"sort"
@@ -12,7 +13,6 @@ import (
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/process"
-	"github.com/sirupsen/logrus"
 )
 
 // Metrics 封装所有监控指标
@@ -35,6 +35,7 @@ type Metrics struct {
 	// 业务错误相关
 	BusinessErrorTotal *prometheus.CounterVec // 业务错误次数(按模块)
 	CriticalErrorTotal prometheus.Counter     // 严重错误次数
+	HistorySaveErrors  prometheus.Counter     // 指标历史持久化失败次数
 
 	// 性能相关
 	SlowRequestTotal   *prometheus.CounterVec // 慢请求统计(>1s)
@@ -187,6 +188,13 @@ func NewMetrics(namespace string) *Metrics {
 				Help:      "Total number of critical errors that need immediate attention",
 			},
 		),
+		HistorySaveErrors: promauto.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "metrics_history_save_errors_total",
+				Help:      "Total number of metrics history persistence failures",
+			},
+		),
 
 		// 性能监控
 		SlowRequestTotal: promauto.NewCounterVec(
@@ -214,21 +222,18 @@ func (m *Metrics) SetHistoryStorage(storage HistoryStorage) {
 	m.historyStorage = storage
 }
 
-func (m *Metrics) StartMetricsCollection(interval time.Duration) {
+func (m *Metrics) StartMetricsCollection(interval time.Duration) error {
+	pid := os.Getpid()
+	monitoredProcess, err := process.NewProcess(int32(pid))
+	if err != nil {
+		return fmt.Errorf("initialize process metrics: %w", err)
+	}
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 
 		var lastPauseNs uint64
 		var lastNumGC uint32
-
-		// 获取进程 ID
-		pid := os.Getpid()
-		process, err := process.NewProcess(int32(pid))
-		if err != nil {
-			logrus.Warnf("Failed to get process: %v", err)
-			return
-		}
 
 		for range ticker.C {
 			// 内存统计
@@ -242,7 +247,7 @@ func (m *Metrics) StartMetricsCollection(interval time.Duration) {
 			cpuPercent := 0.0
 
 			// 方法1: 使用process.Percent计算CPU使用率
-			percent, err := process.Percent(time.Second)
+			percent, err := monitoredProcess.Percent(time.Second)
 			if err == nil && percent > 0 {
 				cpuPercent = percent
 			} else {
@@ -294,18 +299,22 @@ func (m *Metrics) StartMetricsCollection(interval time.Duration) {
 				}
 
 				// 保存指标历史记录
-				err := m.historyStorage.SaveMetrics(
+				m.saveMetricsHistory(
 					time.Now(),
 					cpuPercent,
 					memoryUsagePercent,
 					diskUsagePercent,
 				)
-				if err != nil {
-					logrus.Warnf("Failed to save metrics history: %v", err)
-				}
 			}
 		}
 	}()
+	return nil
+}
+
+func (m *Metrics) saveMetricsHistory(timestamp time.Time, cpuUsage, memoryUsage, diskUsage float64) {
+	if err := m.historyStorage.SaveMetrics(timestamp, cpuUsage, memoryUsage, diskUsage); err != nil {
+		m.HistorySaveErrors.Inc()
+	}
 }
 
 // RecordAPIRequest 记录 API 请求

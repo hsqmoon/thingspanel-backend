@@ -21,6 +21,11 @@ const (
 
 )
 
+const (
+	CodeDeviceBatchOwnershipConflict = 204004
+	CodeDeviceBatchAttributeConflict = 204006
+)
+
 // 业务级错误码
 const (
 	// 用户模块 (200xxx)

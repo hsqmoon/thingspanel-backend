@@ -20,7 +20,7 @@ type CreateUserReq struct {
 }
 
 type LoginReq struct {
-	Email    string `json:"email" validate:"required" example:"test@test.cn"`            // 登录账号(输入邮箱或者手机号)
+	Email    string `json:"email" validate:"required" example:"admin@nsnr.chat"`         // 登录账号(输入邮箱或者手机号)
 	Password string `json:"password" validate:"required,min=6,max=512" example:"123456"` // 密码
 	Salt     string `json:"salt" validate:"omitempty,max=512"`                           // 随机盐(如果在超管设置了前端RSA加密则需要上送)
 }

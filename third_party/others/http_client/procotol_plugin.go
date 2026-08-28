@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
+	"time"
 
 	"project/pkg/errcode"
 
@@ -41,11 +44,9 @@ type DeviceData struct {
 	DeviceConfigID string `json:"device_config_id"`
 }
 
-// 获取插件的表单配置
-// CONFIG-配置表单 VOUCHER-凭证表单 VOUCHER-TYPE-凭证类型表单
-// func GetPluginFromConfig(host string, protocol_type string, device_type string, form_type string, voucher_type string) ([]byte, error) {
-// 	return Get("http://" + host + "/api/v1/form/config?protocol_type=" + protocol_type + "&device_type=" + device_type + "&form_type=" + form_type + "&voucher_type=" + voucher_type)
-// }
+const maxServiceAccessDeviceListResponseBytes int64 = 4 << 20
+
+var serviceAccessDeviceListHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
 // /api/v2/form/config
 // CFG-配置表单 VCR-凭证表单 VCRT-凭证类型表单 SVCRT-服务凭证表单
@@ -69,6 +70,7 @@ func GetPluginFromConfigV2(host string, service_identifier string, device_type s
 	if rspdata.Code != 200 {
 		err = errcode.NewWithMessage(200070, rspdata.Message)
 		logrus.Error(err)
+		return nil, err
 	}
 	return rspdata.Data, nil
 }
@@ -76,11 +78,6 @@ func GetPluginFromConfigV2(host string, service_identifier string, device_type s
 // 断开设备连接让设备重新连接
 func DisconnectDevice(reqdata []byte, host string) (*http.Response, error) {
 	return PostJson("http://"+host+"/api/v1/device/disconnect", reqdata)
-}
-
-// messageType 1-服务配置修改
-func Notification(messageType string, message string, host string) ([]byte, error) {
-	return NotificationWithContext(context.Background(), messageType, message, host)
 }
 
 func NotificationWithContext(ctx context.Context, messageType string, message string, host string) ([]byte, error) {
@@ -130,12 +127,37 @@ func NotificationWithContext(ctx context.Context, messageType string, message st
 
 // /api/v1/service/access/device/list
 // 三方服务列表查询
-func GetServiceAccessDeviceList(host string, voucher string, page_size string, page string) (*ListData, error) {
-	b, err := Get("http://" + host + "/api/v1/plugin/device/list?voucher=" + voucher + "&page_size=" + page_size + "&page=" + page)
+func GetServiceAccessDeviceList(ctx context.Context, host string, voucher string, page_size string, page string) (*ListData, error) {
+	endpoint := url.URL{Scheme: "http", Host: host, Path: "/api/v1/plugin/device/list"}
+	query := endpoint.Query()
+	query.Set("voucher", voucher)
+	query.Set("page_size", page_size)
+	query.Set("page", page)
+	endpoint.RawQuery = query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
-		logrus.Error(err)
-		logrus.Error("http://" + host + "/api/v1/plugin/device/list?voucher=" + voucher + "&page_size=" + page_size + "&page=" + page)
-		return nil, fmt.Errorf("get plugin form failed: %s", err)
+		return nil, errors.New("create plugin device list request failed")
+	}
+	response, err := serviceAccessDeviceListHTTPClient.Do(req)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil, context.Canceled
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("plugin device list request timed out: %w", context.DeadlineExceeded)
+		}
+		return nil, errors.New("plugin device list request failed")
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("plugin device list request failed with status %s", response.Status)
+	}
+	b, err := io.ReadAll(io.LimitReader(response.Body, maxServiceAccessDeviceListResponseBytes+1))
+	if err != nil {
+		return nil, errors.New("read plugin device list response failed")
+	}
+	if int64(len(b)) > maxServiceAccessDeviceListResponseBytes {
+		return nil, errors.New("plugin device list response exceeds size limit")
 	}
 	// 解析表单
 	var rspdata RspDeviceListData

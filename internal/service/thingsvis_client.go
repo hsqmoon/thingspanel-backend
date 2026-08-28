@@ -518,7 +518,7 @@ func (c *ThingsVisClient) DeleteDashboard(ctx context.Context, tenantID, dashboa
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("%w: status=%d body=%s", ErrThingsVisRequestRejected, resp.StatusCode, string(body))
 	}

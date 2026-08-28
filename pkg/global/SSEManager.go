@@ -98,7 +98,7 @@ func (m *SSEManager) ListenForEvents() {
 		for {
 			msg, err := pubsub.ReceiveMessage(context.Background())
 			if err != nil {
-				logrus.WithError(err).Warnf("SSE: Redis pubsub error, reconnecting in %v", backoff)
+				logrus.WithError(err).Errorf("SSE: Redis pubsub error, reconnecting in %v", backoff)
 				time.Sleep(backoff)
 				backoff = min(backoff*2, maxBackoff)
 				break

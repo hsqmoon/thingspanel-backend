@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"project/internal/model"
@@ -74,12 +75,14 @@ func GetServicePluginListByPage(req *model.GetServicePluginByPageReq) (int64, []
 	}
 	// 在 Go 代码中计算 service_heartbeat
 	for i := range servicePlugins {
-		lastActiveTime, ok := servicePlugins[i]["last_active_time"].(time.Time)
-		if !ok {
-			// 处理 LastActiveTime 不是 time.Time 类型的情况
-			logrus.Warn("LastActiveTime is not of type time.Time for plugin ", i)
+		lastActiveValue := servicePlugins[i]["last_active_time"]
+		if lastActiveValue == nil {
 			servicePlugins[i]["service_heartbeat"] = 2 // 默认设置为不活跃
 			continue
+		}
+		lastActiveTime, ok := lastActiveValue.(time.Time)
+		if !ok {
+			return count, nil, fmt.Errorf("plugin %d has invalid last_active_time type %T", i, lastActiveValue)
 		}
 
 		if timeNow.Sub(lastActiveTime) > time.Minute {

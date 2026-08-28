@@ -187,7 +187,7 @@ func TestAttributeSet(t *testing.T) {
 
 			// 如果响应数据仍然是 NULL,打印警告但不失败测试
 			if log.RspData == nil {
-				logger.Warn("Response data is NULL in database",
+				logger.Info("Response data is NULL in database",
 					zap.String("log_id", log.ID),
 					zap.String("message_id", messageID),
 					zap.String("status", log.Status))

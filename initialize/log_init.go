@@ -179,16 +179,14 @@ func LogInIt() error {
 	if level, ok := logLevels[levelStr]; ok {
 		logrus.SetLevel(level)
 	} else {
-		logrus.Error("Invalid log level in config, setting to default level")
-		logrus.SetLevel(logrus.InfoLevel) // 设置默认级别
+		return fmt.Errorf("invalid log level: %q", levelStr)
 	}
 
 	// 读取 adapter_type 配置
 	// 0-控制台输出 1-文件输出 2-文件和控制台输出
 	adapterType := viper.GetInt("log.adapter_type")
 	if adapterType < 0 || adapterType > 2 {
-		adapterType = 0 // 默认控制台输出
-		logrus.Warn("Invalid log adapter_type in config, setting to default (0 - console)")
+		return fmt.Errorf("invalid log adapter_type: %d", adapterType)
 	}
 
 	// 读取文件配置

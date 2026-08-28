@@ -50,7 +50,7 @@ func PgInit() (*gorm.DB, error) {
 			break
 		}
 
-		logrus.Warnf("连接数据库失败 (尝试 %d/%d): %v", retryCount+1, maxRetries, err)
+		logrus.Infof("数据库尚未就绪 (尝试 %d/%d): %v", retryCount+1, maxRetries, err)
 
 		if retryCount < maxRetries-1 {
 			logrus.Infof("将在 %v 后重试连接...", retryInterval)

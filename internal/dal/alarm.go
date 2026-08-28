@@ -10,6 +10,7 @@ import (
 	"project/pkg/global"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"gorm.io/datatypes"
 	"gorm.io/gen"
@@ -48,6 +49,9 @@ func GetAlarmByID(id string) (*model.AlarmConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	if data == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
 	return data, nil
 }
 
@@ -58,6 +62,9 @@ func GetAlarmInfoHistoryByID(id string) (map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+	if result == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
 	// 判断alarm_device_list是否为空
 	if result["alarm_device_list"] == nil {
 		return result, nil
@@ -66,8 +73,16 @@ func GetAlarmInfoHistoryByID(id string) (map[string]interface{}, error) {
 			deviceIds  []string
 			deviceList = make([]map[string]interface{}, 0)
 		)
-		_ = json.Unmarshal([]byte(result["alarm_device_list"].(string)), &deviceIds)
-		_ = query.Device.Where(query.Device.ID.In(deviceIds...)).Select(query.Device.ID, query.Device.Name).Scan(&deviceList)
+		rawDeviceIDs, ok := result["alarm_device_list"].(string)
+		if !ok {
+			return nil, fmt.Errorf("alarm_device_list has type %T, want string", result["alarm_device_list"])
+		}
+		if err := json.Unmarshal([]byte(rawDeviceIDs), &deviceIds); err != nil {
+			return nil, fmt.Errorf("decode alarm_device_list: %w", err)
+		}
+		if err := query.Device.Where(query.Device.ID.In(deviceIds...)).Select(query.Device.ID, query.Device.Name).Scan(&deviceList); err != nil {
+			return nil, fmt.Errorf("query alarm devices: %w", err)
+		}
 		result["alarm_device_list"] = deviceList
 	}
 
@@ -247,8 +262,16 @@ func GetAlarmHistoryListByPage(d *model.GetAlarmHisttoryListByPage, tenantID str
 			deviceIds  []string
 			deviceList = make([]map[string]interface{}, 0)
 		)
-		_ = json.Unmarshal([]byte(v["alarm_device_list"].(string)), &deviceIds)
-		_ = query.Device.Where(query.Device.ID.In(deviceIds...)).Select(query.Device.ID, query.Device.Name).Scan(&deviceList)
+		rawDeviceIDs, ok := v["alarm_device_list"].(string)
+		if !ok {
+			return 0, nil, fmt.Errorf("alarm_device_list has type %T, want string", v["alarm_device_list"])
+		}
+		if err := json.Unmarshal([]byte(rawDeviceIDs), &deviceIds); err != nil {
+			return 0, nil, fmt.Errorf("decode alarm_device_list: %w", err)
+		}
+		if err := query.Device.Where(query.Device.ID.In(deviceIds...)).Select(query.Device.ID, query.Device.Name).Scan(&deviceList); err != nil {
+			return 0, nil, fmt.Errorf("query alarm devices: %w", err)
+		}
 		list[i]["alarm_device_list"] = deviceList
 	}
 	//查询设备命令
@@ -270,15 +293,21 @@ func AlarmHistoryDescUpdate(req *model.AlarmHistoryDescUpdateReq, tenantID strin
 	return nil
 }
 
-func GetDeviceAlarmStatus(req *model.GetDeviceAlarmStatusReq) bool {
+func GetDeviceAlarmStatus(req *model.GetDeviceAlarmStatusReq) (bool, error) {
 	result, err := query.AlarmHistory.Where(gen.Cond(datatypes.JSONQuery("alarm_device_list").HasKey(req.DeviceId))...).Order(query.AlarmHistory.CreateAt.Desc()).First()
-	if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
-		return false
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	if result == nil {
+		return false, fmt.Errorf("alarm history query returned no record")
 	}
 	if result.AlarmStatus == "N" {
-		return false
+		return false, nil
 	}
-	return true
+	return true, nil
 }
 
 func GetConfigByDevice(req *model.GetDeviceAlarmStatusReq) ([]model.AlarmConfig, error) {
@@ -289,7 +318,7 @@ func GetConfigByDevice(req *model.GetDeviceAlarmStatusReq) ([]model.AlarmConfig,
 		return nil, err
 	}
 	if len(result) == 0 {
-		return nil, nil
+		return []model.AlarmConfig{}, nil
 	}
 
 	var (
@@ -297,25 +326,40 @@ func GetConfigByDevice(req *model.GetDeviceAlarmStatusReq) ([]model.AlarmConfig,
 		config   []model.AlarmConfig
 	)
 	for _, v := range result {
-		configId = append(configId, v["alarm_config_id"].(string))
+		id, ok := v["alarm_config_id"].(string)
+		if !ok || id == "" {
+			return nil, fmt.Errorf("alarm_config_id has invalid value %v", v["alarm_config_id"])
+		}
+		configId = append(configId, id)
 	}
 	return config, query.AlarmConfig.Where(query.AlarmConfig.ID.In(configId...)).Scan(&config)
 }
 
-func GetAlarmNameWithCache(alarmId string) string {
-	redis := global.REDIS
+func GetAlarmNameWithCache(alarmId string) (string, error) {
+	redisClient := global.REDIS
+	if redisClient == nil {
+		return "", fmt.Errorf("redis is not initialized")
+	}
 	cacheKey := fmt.Sprintf("GetAlarmNameWithCache:alarmId:%s", alarmId)
 	var result string
-	err := redis.Get(context.Background(), cacheKey).Scan(&result)
+	err := redisClient.Get(context.Background(), cacheKey).Scan(&result)
 	if err == nil && result != "" {
-		return result
+		return result, nil
+	}
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return "", err
 	}
 	alarmConfig, err := query.AlarmConfig.Where(query.AlarmConfig.ID.Eq(alarmId)).Select(query.AlarmConfig.Name).First()
 	if err != nil {
-		return ""
+		return "", err
 	}
-	redis.Set(context.Background(), cacheKey, alarmConfig.Name, time.Hour)
-	return alarmConfig.Name
+	if alarmConfig == nil {
+		return "", fmt.Errorf("alarm config query returned no record")
+	}
+	if err := redisClient.Set(context.Background(), cacheKey, alarmConfig.Name, time.Hour).Err(); err != nil {
+		return "", err
+	}
+	return alarmConfig.Name, nil
 }
 
 func DeleteAlarmHistory(id string, tenantID string) error {
@@ -345,7 +389,9 @@ func GetDeviceIdsByAlarmConfigId(alarmConfigId string) ([]string, error) {
 	for _, h := range histories {
 		var deviceIds []string
 		if h.AlarmDeviceList != "" {
-			_ = json.Unmarshal([]byte(h.AlarmDeviceList), &deviceIds)
+			if err := json.Unmarshal([]byte(h.AlarmDeviceList), &deviceIds); err != nil {
+				return nil, fmt.Errorf("decode alarm_device_list: %w", err)
+			}
 		}
 		for _, did := range deviceIds {
 			deviceSet[did] = struct{}{}
@@ -360,7 +406,10 @@ func GetDeviceIdsByAlarmConfigId(alarmConfigId string) ([]string, error) {
 
 // DeleteAlarmNameCache 删除告警名称缓存
 func DeleteAlarmNameCache(alarmId string) error {
-	redis := global.REDIS
+	redisClient := global.REDIS
+	if redisClient == nil {
+		return fmt.Errorf("redis is not initialized")
+	}
 	cacheKey := fmt.Sprintf("GetAlarmNameWithCache:alarmId:%s", alarmId)
-	return redis.Del(context.Background(), cacheKey).Err()
+	return redisClient.Del(context.Background(), cacheKey).Err()
 }

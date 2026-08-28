@@ -72,7 +72,7 @@ func (c *ScriptCache) GetScript(ctx context.Context, deviceConfigID, scriptType 
 			"module":    "processor.cache",
 			"cache_key": cacheKey,
 			"error":     err.Error(),
-		}).Warn("failed to cache script")
+		}).Error("failed to cache script")
 	}
 
 	// 5. 脚本不存在
@@ -248,7 +248,7 @@ func (c *ScriptCache) PreloadScripts(ctx context.Context, deviceConfigID string)
 				"device_config_id": deviceConfigID,
 				"script_type":      scriptType,
 				"error":            err.Error(),
-			}).Warn("failed to preload script")
+			}).Error("failed to preload script")
 			continue
 		}
 		successCount++

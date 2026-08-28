@@ -118,9 +118,12 @@ func (receiver *MessagePush) AlarmMessagePushSend(triggered, alarmConfigId strin
 	}
 }
 
-func (receiver *MessagePush) MessagePushSendAndLog(message model.MessagePushSend, mange model.MessagePushManage, messageType int64) {
+func (receiver *MessagePush) MessagePushSendAndLog(message model.MessagePushSend, mange model.MessagePushManage, messageType int64) error {
 	res, err := receiver.MessagePushSend(message)
-	contents, _ := json.Marshal(message)
+	contents, marshalErr := json.Marshal(message)
+	if marshalErr != nil {
+		return marshalErr
+	}
 	log := model.MessagePushLog{
 		ID:          uuid.NewString(),
 		UserID:      mange.UserID,
@@ -188,7 +191,7 @@ func (receiver *MessagePush) MessagePushSendAndLog(message model.MessagePushSend
 	}
 	err = dal.MessagePushSendLogSave(&log)
 	if err != nil {
-		logrus.Error("消息推送日志记录失败:", err)
+		return err
 	}
 	updates := map[string]interface{}{
 		"last_push_time": time.Now(),
@@ -200,8 +203,12 @@ func (receiver *MessagePush) MessagePushSendAndLog(message model.MessagePushSend
 	}
 	err = dal.MessagePushMangeSendUpdate(mange.ID, updates)
 	if err != nil {
-		logrus.Error("消息推送更新最近发送时间失败:", err)
+		return err
 	}
+	if log.Status != 1 {
+		return fmt.Errorf("message push failed: %s", log.ErrMessage)
+	}
+	return nil
 }
 
 // NotificationMessagePushSend 处理通知触发的手机端推送

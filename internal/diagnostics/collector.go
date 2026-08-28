@@ -168,7 +168,7 @@ func (c *Collector) Stop(timeout time.Duration) {
 	case <-c.doneCh:
 		c.logger.Info("diagnostics collector stopped gracefully")
 	case <-time.After(timeout):
-		c.logger.Warn("diagnostics collector stop timeout")
+		c.logger.Error("diagnostics collector stop timeout")
 	}
 }
 
@@ -188,7 +188,7 @@ func (c *Collector) RecordFailure(deviceID string, direction Direction, stage St
 	}
 
 	if deviceID == "" {
-		c.logger.Warn("device_id is empty, skipping failure record")
+		c.logger.Error("device_id is empty, failure record rejected")
 		return
 	}
 

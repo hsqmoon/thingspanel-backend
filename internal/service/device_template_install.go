@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 // InstallFromMarket downloads a template from the market and creates it locally:
@@ -28,6 +30,15 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 		return nil, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{
 			"error": "Failed to download template from market: " + err.Error(),
 		})
+	}
+	if fullData == nil {
+		return nil, errcode.NewWithMessage(errcode.CodeSystemError, "market returned an empty template")
+	}
+	if claims == nil {
+		return nil, errcode.NewWithMessage(errcode.CodeUnauthorized, "user claims are required")
+	}
+	if global.DB == nil {
+		return nil, errcode.NewWithMessage(errcode.CodeSystemError, "database is not initialized")
 	}
 
 	// Copy the resource-center cover locally before creating database records.
@@ -48,7 +59,12 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 	}()
 
 	// 2. Check plugin dependencies (before any DB writes)
-	missingPlugins := checkMissingPlugins(fullData.PluginDependencies)
+	missingPlugins, err := checkMissingPlugins(fullData.PluginDependencies)
+	if err != nil {
+		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+			"error": "Failed to check plugin dependencies: " + err.Error(),
+		})
+	}
 
 	// 3. Begin transaction
 	tx := global.DB.Begin()
@@ -61,6 +77,7 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
@@ -72,7 +89,7 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 	existingTpl, err := query.DeviceTemplate.WithContext(context.Background()).
 		Where(query.DeviceTemplate.Name.Eq(fullData.Name), query.DeviceTemplate.TenantID.Eq(claims.TenantID)).
 		First()
-	if err != nil && err.Error() != "record not found" {
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		tx.Rollback()
 		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
 			"error": "Failed to check existing template: " + err.Error(),
@@ -94,14 +111,20 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 	tplDef := fullData.TemplateDefinition // *map[string]interface{}
 	if tplDef != nil {
 		if v, ok := (*tplDef)["web_chart_config"]; ok && v != nil {
-			if bytes, err := json.Marshal(v); err == nil {
-				webChartConfig = string(bytes)
+			bytes, err := json.Marshal(v)
+			if err != nil {
+				tx.Rollback()
+				return nil, errcode.WithData(errcode.CodeParamError, map[string]interface{}{"error": "Invalid web chart config: " + err.Error()})
 			}
+			webChartConfig = string(bytes)
 		}
 		if v, ok := (*tplDef)["app_chart_config"]; ok && v != nil {
-			if bytes, err := json.Marshal(v); err == nil {
-				appChartConfig = string(bytes)
+			bytes, err := json.Marshal(v)
+			if err != nil {
+				tx.Rollback()
+				return nil, errcode.WithData(errcode.CodeParamError, map[string]interface{}{"error": "Invalid app chart config: " + err.Error()})
 			}
+			appChartConfig = string(bytes)
 		}
 	}
 
@@ -123,10 +146,22 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 
 	if isUpdate {
 		// Clean up existing device models before update
-		tx.Where("device_template_id = ?", templateID).Delete(&model.DeviceModelTelemetry{})
-		tx.Where("device_template_id = ?", templateID).Delete(&model.DeviceModelAttribute{})
-		tx.Where("device_template_id = ?", templateID).Delete(&model.DeviceModelEvent{})
-		tx.Where("device_template_id = ?", templateID).Delete(&model.DeviceModelCommand{})
+		if err := tx.Where("device_template_id = ?", templateID).Delete(&model.DeviceModelTelemetry{}).Error; err != nil {
+			tx.Rollback()
+			return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{"error": "Failed to delete existing telemetry: " + err.Error()})
+		}
+		if err := tx.Where("device_template_id = ?", templateID).Delete(&model.DeviceModelAttribute{}).Error; err != nil {
+			tx.Rollback()
+			return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{"error": "Failed to delete existing attributes: " + err.Error()})
+		}
+		if err := tx.Where("device_template_id = ?", templateID).Delete(&model.DeviceModelEvent{}).Error; err != nil {
+			tx.Rollback()
+			return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{"error": "Failed to delete existing events: " + err.Error()})
+		}
+		if err := tx.Where("device_template_id = ?", templateID).Delete(&model.DeviceModelCommand{}).Error; err != nil {
+			tx.Rollback()
+			return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{"error": "Failed to delete existing commands: " + err.Error()})
+		}
 
 		if err := tx.Save(newTemplate).Error; err != nil {
 			tx.Rollback()
@@ -294,25 +329,34 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 			newDC.VoucherType = &fullData.DeviceConfig.VoucherType
 		}
 		if fullData.DeviceConfig.ProtocolConfig != nil {
-			if bytes, err := json.Marshal(fullData.DeviceConfig.ProtocolConfig); err == nil {
-				s := string(bytes)
-				newDC.ProtocolConfig = &s
+			bytes, err := json.Marshal(fullData.DeviceConfig.ProtocolConfig)
+			if err != nil {
+				tx.Rollback()
+				return nil, errcode.WithData(errcode.CodeParamError, map[string]interface{}{"error": "Invalid protocol config: " + err.Error()})
 			}
+			s := string(bytes)
+			newDC.ProtocolConfig = &s
 		}
 		if fullData.DeviceConfig.DeviceConnType != "" {
 			newDC.DeviceConnType = &fullData.DeviceConfig.DeviceConnType
 		}
 		if fullData.DeviceConfig.OtherConfig != nil {
-			if bytes, err := json.Marshal(fullData.DeviceConfig.OtherConfig); err == nil {
-				s := string(bytes)
-				newDC.OtherConfig = &s
+			bytes, err := json.Marshal(fullData.DeviceConfig.OtherConfig)
+			if err != nil {
+				tx.Rollback()
+				return nil, errcode.WithData(errcode.CodeParamError, map[string]interface{}{"error": "Invalid other config: " + err.Error()})
 			}
+			s := string(bytes)
+			newDC.OtherConfig = &s
 		}
 		if fullData.DeviceConfig.AdditionalInfo != nil {
-			if bytes, err := json.Marshal(fullData.DeviceConfig.AdditionalInfo); err == nil {
-				s := string(bytes)
-				newDC.AdditionalInfo = &s
+			bytes, err := json.Marshal(fullData.DeviceConfig.AdditionalInfo)
+			if err != nil {
+				tx.Rollback()
+				return nil, errcode.WithData(errcode.CodeParamError, map[string]interface{}{"error": "Invalid additional info: " + err.Error()})
 			}
+			s := string(bytes)
+			newDC.AdditionalInfo = &s
 		}
 		newDC.AutoRegister = fullData.DeviceConfig.AutoRegister
 	}
@@ -350,31 +394,31 @@ func (*DeviceTemplate) InstallFromMarket(req model.InstallFromMarketReq, claims 
 	}()
 
 	// 5. Fetch created records and return
-	createdTpl, _ := dal.GetDeviceTemplateById(templateID)
-	createdDC, _ := dal.GetDeviceConfigByID(dcID)
-
 	return &model.InstallFromMarketRsp{
 		DeviceConfigID: dcID,
-		DeviceTemplate: createdTpl,
-		DeviceConfig:   createdDC,
+		DeviceTemplate: newTemplate,
+		DeviceConfig:   newDC,
 		MissingPlugins: missingPlugins,
 	}, nil
 }
 
 // checkMissingPlugins checks which plugin dependencies are not installed locally
-func checkMissingPlugins(deps []model.PluginDependency) []model.PluginDependency {
+func checkMissingPlugins(deps []model.PluginDependency) ([]model.PluginDependency, error) {
 	if len(deps) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	var missing []model.PluginDependency
 	for _, dep := range deps {
 		p, err := dal.GetServicePluginByServiceIdentifier(dep.PluginName)
-		if err != nil || p == nil {
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) || p == nil {
 			missing = append(missing, dep)
 		}
 	}
-	return missing
+	return missing, nil
 }
 
 // ptrStrP returns a pointer to a string (nil-safe)

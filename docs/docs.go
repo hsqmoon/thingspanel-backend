@@ -851,7 +851,7 @@ const docTemplate = `{
                 "email": {
                     "description": "登录账号(输入邮箱或者手机号)",
                     "type": "string",
-                    "example": "test@test.cn"
+                    "example": "admin@nsnr.chat"
                 },
                 "password": {
                     "description": "密码",

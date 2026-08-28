@@ -291,7 +291,7 @@ func (d *DirectDevice) GetReceivedMessages(topicPattern string, timeout time.Dur
 
 	// 超时后打印调试信息
 	d.mu.RLock()
-	d.logger.Warn("No matching messages found",
+	d.logger.Info("No matching messages found",
 		zap.String("pattern", topicPattern),
 		zap.Int("total_topics", len(d.receivedMessages)))
 	for topic, msgs := range d.receivedMessages {

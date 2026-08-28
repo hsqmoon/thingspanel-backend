@@ -102,7 +102,7 @@ func (p *ScriptProcessor) Decode(ctx context.Context, input *DecodeInput) (*Deco
 			"device_config_id": input.DeviceConfigID,
 			"script_type":      scriptType,
 			"script_id":        script.ID,
-		}).Warn("script is disabled")
+		}).Debug("script is disabled")
 		return &DecodeOutput{
 			Success:   false,
 			Error:     err,
@@ -145,7 +145,7 @@ func (p *ScriptProcessor) Decode(ctx context.Context, input *DecodeInput) (*Deco
 			"script_type":      scriptType,
 			"script_id":        script.ID,
 			"raw_result":       resultStr,
-		}).Warn("【脚本处理器】script returned non-JSON-object data, wrapping based on data type")
+		}).Debug("【脚本处理器】script returned non-JSON-object data, wrapping based on data type")
 
 		// 尝试将 resultStr 作为 JSON 值解析（可能是字符串、数字、布尔等）
 		var rawValue interface{}
@@ -276,7 +276,7 @@ func (p *ScriptProcessor) Encode(ctx context.Context, input *EncodeInput) (*Enco
 			"device_config_id": input.DeviceConfigID,
 			"script_type":      scriptType,
 			"script_id":        script.ID,
-		}).Warn("script is disabled")
+		}).Debug("script is disabled")
 		return &EncodeOutput{
 			Success: false,
 			Error:   err,

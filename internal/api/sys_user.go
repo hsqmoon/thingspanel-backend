@@ -21,7 +21,7 @@ type UserApi struct{}
 // @Success      200 {object} model.LoginRsp "成功"
 // @Failure      400 {object} errcode.Error "错误响应"
 // @Router       /api/v1/login [post]
-// @example request - "请求示例" {"email":"test@test.cn","password":"123456"}
+// @example request - "请求示例" {"email":"admin@nsnr.chat","password":"use-a-strong-password"}
 func (*UserApi) Login(c *gin.Context) {
 	var loginReq model.LoginReq
 	if !BindAndValidate(c, &loginReq) {
@@ -58,11 +58,21 @@ func (*UserApi) Login(c *gin.Context) {
 
 	loginRsp, err := service.GroupApp.User.Login(c, &loginReq)
 	if err != nil {
-		_ = loginLock.LoginFail(c, loginReq.Email)
+		if loginLock.MaxFailedAttempts > 0 {
+			if countErr := loginLock.LoginFail(c, loginReq.Email); countErr != nil {
+				c.Error(countErr)
+				return
+			}
+		}
 		c.Error(err)
 		return
 	}
-	_ = loginLock.LoginSuccess(c, loginReq.Email)
+	if loginLock.MaxFailedAttempts > 0 {
+		if countErr := loginLock.LoginSuccess(c, loginReq.Email); countErr != nil {
+			c.Error(countErr)
+			return
+		}
+	}
 	c.Set("data", loginRsp)
 }
 

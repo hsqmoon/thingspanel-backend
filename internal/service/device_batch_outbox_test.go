@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"project/internal/dal"
 	"project/internal/model"
 	"project/internal/query"
+	"project/pkg/errcode"
 	"project/pkg/global"
 	"project/pkg/utils"
 
@@ -135,7 +137,36 @@ func TestCreateDeviceBatchCommitsBeforeRetryableNotification(t *testing.T) {
 	conflictingReq.DeviceList = append([]model.BatchCreateDeviceItem(nil), req.DeviceList...)
 	conflictingReq.DeviceList[0].DeviceName = "Different Name"
 	_, err = deviceService.CreateDeviceBatch(conflictingReq, claims)
-	require.Error(t, err)
+	var businessErr *errcode.Error
+	require.ErrorAs(t, err, &businessErr)
+	require.Equal(t, errcode.CodeDeviceBatchAttributeConflict, businessErr.Code)
+	conflictData, ok := businessErr.Data.(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, string(dal.DeviceBatchAttributeConflict), conflictData["conflict_kind"])
+	require.Equal(t, "device-a", conflictData["device_number"])
+
+	otherAccess := "other-access"
+	ownedName := "Owned"
+	require.NoError(t, db.Create(&model.Device{
+		ID: "owned-device", Name: &ownedName, Voucher: "owned-voucher", TenantID: "tenant-2",
+		DeviceNumber: "device-owned", ActivateFlag: "active", ServiceAccessID: &otherAccess,
+	}).Error)
+	ownershipReq := req
+	ownershipReq.DeviceList = []model.BatchCreateDeviceItem{
+		{DeviceName: "Owned", DeviceNumber: "device-owned", DeviceConfigId: "config-1"},
+		{DeviceName: "Rollback", DeviceNumber: "device-would-roll-back", DeviceConfigId: "config-1"},
+	}
+	_, err = deviceService.CreateDeviceBatch(ownershipReq, claims)
+	require.ErrorAs(t, err, &businessErr)
+	require.Equal(t, errcode.CodeDeviceBatchOwnershipConflict, businessErr.Code)
+	conflictData, ok = businessErr.Data.(map[string]interface{})
+	require.True(t, ok)
+	require.Equal(t, string(dal.DeviceBatchOwnershipConflict), conflictData["conflict_kind"])
+	require.Equal(t, "device-owned", conflictData["device_number"])
+	require.NoError(t, db.Model(&model.Device{}).Where("device_number = ?", "device-would-roll-back").Count(&deviceCount).Error)
+	require.Zero(t, deviceCount)
+	require.NoError(t, db.Model(&model.DeviceBatchOutbox{}).Count(&outboxCount).Error)
+	require.EqualValues(t, 1, outboxCount)
 
 	require.NoError(t, db.Where("id = ?", response.Devices[0].ID).Delete(&model.Device{}).Error)
 	recreatedData, err := deviceService.CreateDeviceBatch(req, claims)

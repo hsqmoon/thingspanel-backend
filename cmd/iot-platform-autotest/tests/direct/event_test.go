@@ -103,7 +103,7 @@ func TestEventPublish(t *testing.T) {
 				zap.Any("response", response))
 		}
 	} else {
-		logger.Warn("No event response received from platform",
+		logger.Info("No event response received from platform",
 			zap.String("expected_topic_pattern", topics.EventResponse()))
 	}
 }

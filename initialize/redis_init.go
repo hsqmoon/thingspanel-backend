@@ -187,36 +187,14 @@ func GetScriptByDeviceAndScriptType(device *model.Device, script_type string) (*
 
 // 清除设备信息缓存
 func DelDeviceCache(deviceId string) error {
-	err := global.REDIS.Del(context.Background(), deviceId).Err()
-	if err != nil {
-		logrus.Warn("del redis_cache key(deviceId):", deviceId, " failed with err:", err.Error())
-	}
-	return err
+	return global.REDIS.Del(context.Background(), deviceId).Err()
 }
 
 // 清除设备配置信息缓存
 func DelDeviceConfigCache(deviceConfigId string) error {
-	err := global.REDIS.Del(context.Background(), deviceConfigId+"_config").Err()
-	if err != nil {
-		logrus.Warn("del redis_cache key(deviceConfigId):", deviceConfigId+"_config", " failed with err:", err.Error())
-	}
-	return err
+	return global.REDIS.Del(context.Background(), deviceConfigId+"_config").Err()
 }
 
-// 清除设备对应的脚本缓存
-// func DelDeviceDataScriptCache(deviceID string) error {
-// 	scriptType := []string{"A", "B", "C", "D", "E", "F"}
-// 	var key []string
-// 	for _, scriptType := range scriptType {
-// 		key = append(key, deviceID+"_"+scriptType+"_script")
-// 	}
-
-//		err := global.REDIS.Del(context.Background(), key...).Err()
-//		if err != nil {
-//			logrus.Warn("del redis_cache key:", key, " failed with err:", err.Error())
-//		}
-//		return err
-//	}
 func DelDeviceDataScriptCache(deviceConfigID string) error {
 	scriptType := []string{"A", "B", "C", "D", "E", "F"}
 	var key []string
@@ -224,9 +202,5 @@ func DelDeviceDataScriptCache(deviceConfigID string) error {
 		key = append(key, deviceConfigID+"_"+scriptType+"_script")
 	}
 
-	err := global.REDIS.Del(context.Background(), key...).Err()
-	if err != nil {
-		logrus.Warn("del redis_cache key:", key, " failed with err:", err.Error())
-	}
-	return err
+	return global.REDIS.Del(context.Background(), key...).Err()
 }

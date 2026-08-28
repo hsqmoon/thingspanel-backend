@@ -50,7 +50,7 @@ func (f *ResponseUplink) Start(input <-chan *DeviceMessage) error {
 				return
 			case msg := <-input:
 				if msg == nil {
-					f.logger.Warn("Received nil response message, skipping")
+					f.logger.Debug("Received nil response message, skipping")
 					continue
 				}
 				f.logger.WithFields(logrus.Fields{
@@ -95,7 +95,7 @@ func (f *ResponseUplink) processMessage(msg *DeviceMessage) {
 		f.updateAttributeLog(messageID, success, responseData, responseRaw)
 
 	default:
-		f.logger.WithField("type", msg.Type).Warn("Unknown response type")
+		f.logger.WithField("type", msg.Type).Error("Unknown response type")
 	}
 }
 
@@ -115,7 +115,7 @@ func (f *ResponseUplink) parseResponse(payload []byte) (string, bool) {
 
 	if err := json.Unmarshal(payload, &response); err != nil {
 		// 解析失败，认为是原始响应数据，记录错误
-		f.logger.WithError(err).WithField("payload", string(payload)).Warn("Failed to parse response as JSON")
+		f.logger.WithError(err).WithField("payload", string(payload)).Error("Failed to parse response as JSON")
 		return string(payload), false // 解析失败视为失败
 	}
 
@@ -163,7 +163,7 @@ func (f *ResponseUplink) updateCommandLog(messageID string, success bool, errorM
 	}
 
 	if result.RowsAffected == 0 {
-		f.logger.WithField("message_id", messageID).Warn("Command log not found")
+		f.logger.WithField("message_id", messageID).Debug("Command log not found")
 		return
 	}
 
@@ -200,7 +200,7 @@ func (f *ResponseUplink) updateAttributeLog(messageID string, success bool, erro
 	}
 
 	if result.RowsAffected == 0 {
-		f.logger.WithField("message_id", messageID).Warn("Attribute log not found")
+		f.logger.WithField("message_id", messageID).Debug("Attribute log not found")
 		return
 	}
 

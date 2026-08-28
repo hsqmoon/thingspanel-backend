@@ -66,6 +66,27 @@ func (r *DashboardTemplateRepo) CreateTemplateWithBindings(
 	})
 }
 
+func (r *DashboardTemplateRepo) DeleteTemplates(ctx context.Context, tenantID string, templateIDs []string) error {
+	if len(templateIDs) == 0 {
+		return nil
+	}
+	return global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("dashboard_template_id IN ?", templateIDs).
+			Delete(&model.LocalDashboardTemplateBinding{}).Error; err != nil {
+			return fmt.Errorf("delete local dashboard template bindings: %w", err)
+		}
+		result := tx.Where("tenant_id = ? AND id IN ?", tenantID, templateIDs).
+			Delete(&model.LocalDashboardTemplate{})
+		if result.Error != nil {
+			return fmt.Errorf("delete local dashboard templates: %w", result.Error)
+		}
+		if result.RowsAffected != int64(len(templateIDs)) {
+			return fmt.Errorf("deleted %d dashboard templates, want %d", result.RowsAffected, len(templateIDs))
+		}
+		return nil
+	})
+}
+
 func (r *DashboardTemplateRepo) ListAll(
 	ctx context.Context,
 	tenantID, keyword, source string,

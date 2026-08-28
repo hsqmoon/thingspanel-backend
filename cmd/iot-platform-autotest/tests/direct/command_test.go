@@ -123,7 +123,7 @@ func TestCommandPublish(t *testing.T) {
 
 			// 响应数据可能为 NULL
 			if log.RspData == nil {
-				logger.Warn("Response data is NULL in database",
+				logger.Info("Response data is NULL in database",
 					zap.String("log_id", log.ID),
 					zap.String("message_id", messageID))
 			} else {

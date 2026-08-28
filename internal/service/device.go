@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -238,13 +239,31 @@ func (d *Device) CreateDeviceBatch(req model.BatchCreateDeviceReq, claims *utils
 	}
 	persisted, persistedOutbox, err := dal.CreateDeviceBatch(devices, outbox)
 	if err != nil {
+		var batchErr *dal.DeviceBatchError
+		if errors.As(err, &batchErr) {
+			data := map[string]interface{}{
+				"conflict_kind": string(batchErr.Kind),
+				"field":         batchErr.Field,
+			}
+			if batchErr.DeviceNumber != "" {
+				data["device_number"] = batchErr.DeviceNumber
+			}
+			switch batchErr.Kind {
+			case dal.DeviceBatchInvalidInput:
+				return nil, errcode.WithData(errcode.CodeParamError, data)
+			case dal.DeviceBatchOwnershipConflict:
+				return nil, errcode.WithData(errcode.CodeDeviceBatchOwnershipConflict, data)
+			case dal.DeviceBatchAttributeConflict:
+				return nil, errcode.WithData(errcode.CodeDeviceBatchAttributeConflict, data)
+			}
+		}
 		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{"sql_error": err.Error()})
 	}
 
 	delivery, deliveryErr := d.tryDeviceBatchDelivery(persistedOutbox.EventID)
 	if deliveryErr != nil {
 		logrus.WithError(deliveryErr).WithField("event_id", persistedOutbox.EventID).
-			Warn("device batch committed; plugin notification remains pending")
+			Info("device batch committed; plugin notification remains pending")
 	}
 	if delivery == nil {
 		delivery = persistedOutbox
@@ -457,7 +476,9 @@ func (*Device) UpdateDevice(req model.UpdateDeviceReq, claims *utils.UserClaims)
 		})
 	}
 	// 清除设备缓存
-	initialize.DelDeviceCache(req.Id)
+	if err := initialize.DelDeviceCache(req.Id); err != nil {
+		return nil, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": "invalidate device cache: " + err.Error()})
+	}
 
 	// 如果是子设备地址被修改，需要通知插件断开网关让其重连
 	if req.SubDeviceAddr != nil && *req.SubDeviceAddr != "" {
@@ -509,7 +530,9 @@ func (*Device) ActiveDevice(req model.ActiveDeviceReq) (any, error) {
 		})
 	}
 	// 清除设备缓存
-	initialize.DelDeviceCache(device.ID)
+	if err := initialize.DelDeviceCache(device.ID); err != nil {
+		return nil, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": "invalidate device cache: " + err.Error()})
+	}
 	return device, nil
 }
 
@@ -632,9 +655,13 @@ func (*Device) DeleteDevice(id string, userClaims *utils.UserClaims) error {
 		})
 	}
 	// 清除设备缓存
-	initialize.DelDeviceCache(id)
+	if err := initialize.DelDeviceCache(id); err != nil {
+		return errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": "invalidate device cache: " + err.Error()})
+	}
 	// 清除鉴权缓存
-	global.REDIS.Del(context.Background(), deviceInfo.Voucher)
+	if err := global.REDIS.Del(context.Background(), deviceInfo.Voucher).Err(); err != nil {
+		return errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": "invalidate device authentication cache: " + err.Error()})
+	}
 	// 通知协议插件
 	if disconnectErr := protocolplugin.DisconnectDeviceByDeviceID(id); disconnectErr != nil {
 		logrus.Error("DisconnectDeviceByDeviceID failed:", disconnectErr)
@@ -665,8 +692,10 @@ func (*Device) GetDeviceByIDV1(id string, claims *utils.UserClaims) (map[string]
 	// 查询设备告警状态
 	alarmStatus, err := dal.GetDeviceLatestAlarmStatus(id)
 	if err != nil {
-		logrus.Warnf("[GetDeviceByIDV1] get device alarm status failed, deviceID=%s, err=%v", id, err)
-		alarmStatus = "N"
+		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+			"sql_error": err.Error(),
+			"message":   "get device alarm status failed",
+		})
 	}
 	data["warn_status"] = alarmStatus
 
@@ -734,26 +763,25 @@ func (*Device) GetDeviceListByPage(req *model.GetDeviceListByPageReq, u *utils.U
 	return deviceListRsp, err
 }
 
-func (d *Device) CheckDeviceNumber(deviceNumber string) (*errcode.Error, bool) {
+func (d *Device) CheckDeviceNumber(deviceNumber string) (bool, error) {
 	device, err := query.Device.Where(query.Device.DeviceNumber.Eq(deviceNumber)).First()
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			// 如果设备不存在，说明设备号不可用
-			return errcode.WithVars(204001, map[string]interface{}{
-				"error": deviceNumber,
-			}), false
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
 		}
-		// 数据库错误
-		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+		return false, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
 			"sql_error": err.Error(),
-		}), false
+		})
 	}
 
+	if device == nil {
+		return false, errcode.NewWithMessage(errcode.CodeDBError, "device query returned no record")
+	}
 	if device.ActivateFlag == "active" {
-		return errcode.New(204002), false
+		return false, nil
 	}
 
-	return errcode.WithVars(204003, nil), true
+	return true, nil
 }
 
 func (*Device) GetDevicePreRegisterListByPage(req *model.GetDevicePreRegisterListByPageReq, u *utils.UserClaims) (map[string]interface{}, error) {
@@ -793,7 +821,9 @@ func (*Device) RemoveSubDevice(id string, claims *utils.UserClaims) error {
 		}
 	}
 	// 清除设备缓存
-	initialize.DelDeviceCache(id)
+	if err := initialize.DelDeviceCache(id); err != nil {
+		return errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": "invalidate device cache: " + err.Error()})
+	}
 	return nil
 }
 
@@ -1184,7 +1214,9 @@ func (*Device) UpdateDeviceConfig(param *model.ChangeDeviceConfigReq) error {
 		})
 	}
 	// 清除设备缓存
-	initialize.DelDeviceCache(param.DeviceID)
+	if err := initialize.DelDeviceCache(param.DeviceID); err != nil {
+		return errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": "invalidate device cache: " + err.Error()})
+	}
 	// 清除设备数据脚本缓存  不需要删除，脚本跟随设备配置
 	// initialize.DelDeviceDataScriptCache(param.DeviceID)
 	return err
@@ -1240,10 +1272,14 @@ func (*Device) UpdateDeviceVoucher(ctx context.Context, param *model.UpdateDevic
 		return info.Voucher, err
 	}
 	// 清除设备缓存
-	initialize.DelDeviceCache(param.DeviceID)
+	if err := initialize.DelDeviceCache(param.DeviceID); err != nil {
+		return info.Voucher, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": "invalidate device cache: " + err.Error()})
+	}
 	if deviceInfo.Voucher != voucher {
 		// 清除broker的缓存
-		global.REDIS.Del(ctx, deviceInfo.Voucher)
+		if err := global.REDIS.Del(ctx, deviceInfo.Voucher).Err(); err != nil {
+			return info.Voucher, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": "invalidate previous device authentication cache: " + err.Error()})
+		}
 
 		// 当设备配置的协议类型不是MQTT的时候要通知到插件
 		if deviceInfo.DeviceConfigID != nil {
@@ -1535,8 +1571,6 @@ func (*Device) GetActionByDeviceID(deviceID string) (any, error) {
 		]
 	},
 	*/
-	//
-	//http://47.251.45.205:9999/api/v1/device/metrics/condition/menu?device_id=653e34cf-eb4d-2219-b182-79bc1f8379f1
 	// 获取设备配置信息
 	device, err := dal.GetDeviceByID(deviceID)
 	if err != nil {
@@ -2071,23 +2105,33 @@ func (*Device) GetDeviceOnlineStatus(device_id string) (map[string]int, error) {
 }
 
 func (*Device) GatewayRegister(req model.GatewayRegisterReq) (model.GatewayRegisterRes, error) {
-	var (
-		device *model.Device
-		err    error
-	)
-	device, err = dal.GetDeviceByDeviceNumber(req.GatewayId)
+	device, err := dal.GetDeviceByDeviceNumber(req.GatewayId)
 	if err == nil {
+		if device == nil {
+			return model.GatewayRegisterRes{}, errcode.NewWithMessage(errcode.CodeDBError, "gateway query returned no record")
+		}
 		var voucher model.DeviceVoucher
-		_ = json.Unmarshal([]byte(device.Voucher), &voucher)
+		if err := json.Unmarshal([]byte(device.Voucher), &voucher); err != nil {
+			return model.GatewayRegisterRes{}, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{
+				"error": "stored gateway voucher is invalid: " + err.Error(),
+			})
+		}
+		if voucher.Username == "" || voucher.Password == "" || device.ID == "" {
+			return model.GatewayRegisterRes{}, errcode.NewWithMessage(errcode.CodeSystemError, "stored gateway voucher is incomplete")
+		}
 
 		return model.GatewayRegisterRes{
 			MqttUsername: voucher.Username,
 			MqttPassword: voucher.Password,
 			MqttClientId: device.ID,
 		}, nil
-	} else {
-		device = &model.Device{}
 	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return model.GatewayRegisterRes{}, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+			"sql_error": err.Error(),
+		})
+	}
+	device = &model.Device{}
 
 	// device model.Device
 	result := model.GatewayRegisterRes{
@@ -2099,12 +2143,15 @@ func (*Device) GatewayRegister(req model.GatewayRegisterReq) (model.GatewayRegis
 
 	device.ID = result.MqttClientId
 	device.Name = &req.Model
-	deviceConfigId := dal.GetDeviceConfigIdByName(req.Model)
-	if deviceConfigId == nil || *deviceConfigId == "" {
-		deviceConfigId = nil
+	deviceConfig, err := query.DeviceConfig.Where(query.DeviceConfig.Name.Eq(req.Model)).Select(query.DeviceConfig.ID).First()
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return model.GatewayRegisterRes{}, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+			"sql_error": err.Error(),
+		})
 	}
-	device.DeviceConfigID = deviceConfigId
-	logrus.Info(device.DeviceConfigID)
+	if err == nil && deviceConfig != nil && deviceConfig.ID != "" {
+		device.DeviceConfigID = &deviceConfig.ID
+	}
 	device.Voucher = `{"username":"` + result.MqttUsername + `","password":"` + result.MqttPassword + `"}`
 	device.TenantID = req.TenantId
 	device.CreatedAt = &t
@@ -2112,20 +2159,28 @@ func (*Device) GatewayRegister(req model.GatewayRegisterReq) (model.GatewayRegis
 	device.DeviceNumber = req.GatewayId
 	device.IsOnline = 1
 	device.ActivateFlag = "active"
-	return result, dal.CreateDevice(device)
+	if err := dal.CreateDevice(device); err != nil {
+		return model.GatewayRegisterRes{}, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+			"sql_error": err.Error(),
+		})
+	}
+	return result, nil
 }
 
 func (*Device) GatewayDeviceRegister(req model.DeviceRegisterReq) (model.DeviceRegisterRes, error) {
 	device, err := dal.GetDeviceByID(req.DeviceId)
 	if err != nil {
-		var voucher model.DeviceVoucher
-		_ = json.Unmarshal([]byte(device.Voucher), &voucher)
-
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return model.DeviceRegisterRes{}, errcode.WithData(errcode.CodeDBError, map[string]interface{}{"sql_error": err.Error()})
+		}
 		return model.DeviceRegisterRes{
 			Type:    "sub-register-response",
 			Status:  "fail",
 			Message: "未查询到网关设备信息",
 		}, nil
+	}
+	if device == nil {
+		return model.DeviceRegisterRes{}, errcode.NewWithMessage(errcode.CodeDBError, "gateway query returned no record")
 	}
 	res := model.DeviceRegisterRes{
 		Type:         "sub-register-response",

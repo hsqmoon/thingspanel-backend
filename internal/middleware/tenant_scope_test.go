@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"project/pkg/constant"
 	"project/pkg/utils"
 
 	"github.com/gin-gonic/gin"
@@ -60,6 +61,30 @@ func TestTenantResourceIDs(t *testing.T) {
 	}
 }
 
+func TestTenantResourceIDsRejectsInvalidURLEscapes(t *testing.T) {
+	tests := []struct {
+		name      string
+		target    string
+		wantError string
+	}{
+		{name: "path", target: "/api/v1/device/%25ZZ", wantError: "请求路径包含无效转义"},
+		{name: "query", target: "/api/v1/device?id=%ZZ", wantError: "请求查询参数包含无效转义"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			context, _ := gin.CreateTestContext(recorder)
+			request := httptest.NewRequest(http.MethodGet, tt.target, nil)
+			context.Request = request
+
+			_, err := tenantResourceIDs(context)
+			if err == nil || err.Error() != tt.wantError {
+				t.Fatalf("expected %q, got %v", tt.wantError, err)
+			}
+		})
+	}
+}
+
 func TestTenantScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	originalTenantExists := tenantExists
@@ -78,7 +103,12 @@ func TestTenantScope(t *testing.T) {
 		{name: "system global read", method: http.MethodGet, path: "/api/v1/device", claims: utils.UserClaims{Authority: "SYS_ADMIN"}, wantCalled: true},
 		{name: "system selected tenant", method: http.MethodGet, path: "/api/v1/device", claims: utils.UserClaims{Authority: "SYS_ADMIN"}, header: "tenant-a", wantCalled: true, wantTenant: "tenant-a"},
 		{name: "system global write rejected", method: http.MethodPost, path: "/api/v1/device", claims: utils.UserClaims{Authority: "SYS_ADMIN"}, wantCalled: false},
+		{name: "system global dashboard read", method: http.MethodGet, path: "/api/v1/thingsvis-dashboard/dash", claims: utils.UserClaims{Authority: "SYS_ADMIN"}, wantCalled: true, wantTenant: constant.DashboardSystemScope},
+		{name: "system global dashboard delete", method: http.MethodDelete, path: "/api/v1/thingsvis-dashboard/dash", claims: utils.UserClaims{Authority: "SYS_ADMIN"}, wantCalled: true, wantTenant: constant.DashboardSystemScope},
+		{name: "system global dashboard menu write", method: http.MethodPut, path: "/api/v1/dashboard-menu/dash", claims: utils.UserClaims{Authority: "SYS_ADMIN"}, wantCalled: true, wantTenant: constant.DashboardSystemScope},
+		{name: "system selected dashboard tenant", method: http.MethodDelete, path: "/api/v1/thingsvis-dashboard/dash", claims: utils.UserClaims{Authority: "SYS_ADMIN"}, header: "tenant-a", wantCalled: true, wantTenant: "tenant-a"},
 		{name: "tenant own scope", method: http.MethodGet, path: "/api/v1/device", claims: utils.UserClaims{Authority: "TENANT_ADMIN", TenantID: "tenant-a"}, header: "tenant-a", wantCalled: true, wantTenant: "tenant-a"},
+		{name: "tenant dashboard own scope", method: http.MethodDelete, path: "/api/v1/thingsvis-dashboard/dash", claims: utils.UserClaims{Authority: "TENANT_ADMIN", TenantID: "tenant-a"}, wantCalled: true, wantTenant: "tenant-a"},
 		{name: "tenant cross scope rejected", method: http.MethodGet, path: "/api/v1/device", claims: utils.UserClaims{Authority: "TENANT_ADMIN", TenantID: "tenant-a"}, header: "tenant-b", wantCalled: false},
 		{name: "tenant user business access rejected", method: http.MethodGet, path: "/api/v1/device", claims: utils.UserClaims{Authority: "TENANT_USER", TenantID: "tenant-a"}, wantCalled: false},
 		{name: "tenant user personal access allowed", method: http.MethodGet, path: "/api/v1/user/detail", claims: utils.UserClaims{Authority: "TENANT_USER", TenantID: "tenant-a"}, wantCalled: true, wantTenant: "tenant-a"},

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,9 +38,12 @@ type eventParamCondition struct {
 }
 
 type Automate struct {
-	device  *model.Device
-	formExt AutomateFromExt
-	mu      sync.Mutex
+	device                *model.Device
+	formExt               AutomateFromExt
+	actionExecute         func(string, []string, []model.ActionInfo, string) (string, error)
+	sceneAutomationTenant func(context.Context, string) (string, error)
+	sceneExecutionLogSave func(string, string, string, error) error
+	mu                    sync.Mutex
 	// 用于跟踪在单次设备上报过程中已经执行过的场景ID
 	executedSceneIDs map[string]bool
 }
@@ -65,43 +67,47 @@ type AutomateFromExt struct {
 	TriggerValues    map[string]interface{}
 }
 
-func (a *Automate) conditionAfterDecorationRun(ok bool, conditions initialize.DTConditions, deviceId string, contents []string) {
-	defer a.ErrorRecover()
+func (a *Automate) conditionAfterDecorationRun(ok bool, conditions initialize.DTConditions, deviceId string, contents []string) (decorationErr error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			decorationErr = errors.Join(decorationErr, fmt.Errorf("condition decoration panic: %v", recovered))
+		}
+	}()
 	for _, fc := range conditionAfterDecoration {
-		err := fc(ok, conditions, deviceId, contents)
-		if err != nil {
-			logrus.Error(err)
+		if err := fc(ok, conditions, deviceId, contents); err != nil {
+			decorationErr = errors.Join(decorationErr, err)
 		}
 	}
+	return decorationErr
 }
 
-func (a *Automate) actionAfterDecorationRun(actions []model.ActionInfo, deviceId string, err error) {
-	defer a.ErrorRecover()
+func (a *Automate) actionAfterDecorationRun(actions []model.ActionInfo, deviceId string, actionErr error) (decorationErr error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			decorationErr = errors.Join(decorationErr, fmt.Errorf("action decoration panic: %v", recovered))
+		}
+	}()
 	for _, fc := range actionAfterDecoration {
-		err := fc(actions, deviceId, err)
-		if err != nil {
-			logrus.Error(err)
+		if err := fc(actions, deviceId, actionErr); err != nil {
+			decorationErr = errors.Join(decorationErr, err)
 		}
 	}
-}
-
-func (*Automate) ErrorRecover() func() {
-	return func() {
-		if r := recover(); r != nil {
-			// 获取当前的调用堆栈
-			stack := string(debug.Stack())
-			// 打印堆栈信息
-			logrus.Error("自动化 执行异常:\n", r, "\nStack trace:\n", stack)
-		}
-	}
+	return decorationErr
 }
 
 // Execute
 // @description 设备上报执行自动化（读取缓存信息 缓存无信息数据库查询保存缓存信息）
 // @params deviceInfo *model.Device
 // @return error
-func (a *Automate) Execute(deviceInfo *model.Device, fromExt AutomateFromExt) error {
-	defer a.ErrorRecover()
+func (a *Automate) Execute(deviceInfo *model.Device, fromExt AutomateFromExt) (executeErr error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			executeErr = errors.Join(executeErr, fmt.Errorf("automation execution panic: %v", recovered))
+		}
+	}()
+	if deviceInfo == nil {
+		return errors.New("automation device is nil")
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.device = deviceInfo
@@ -109,15 +115,19 @@ func (a *Automate) Execute(deviceInfo *model.Device, fromExt AutomateFromExt) er
 	// 初始化已执行场景ID的跟踪器
 	a.executedSceneIDs = make(map[string]bool)
 
+	var executeErrors []error
 	// 单类设备
 	if deviceInfo.DeviceConfigID != nil {
 		deviceConfigId := *deviceInfo.DeviceConfigID
 		err := a.telExecute(deviceInfo.ID, deviceConfigId, fromExt)
 		if err != nil {
-			logrus.Error("自动化执行失败", err)
+			executeErrors = append(executeErrors, fmt.Errorf("execute device-config automation: %w", err))
 		}
 	}
-	return a.telExecute(deviceInfo.ID, "", fromExt)
+	if err := a.telExecute(deviceInfo.ID, "", fromExt); err != nil {
+		executeErrors = append(executeErrors, fmt.Errorf("execute device automation: %w", err))
+	}
+	return errors.Join(executeErrors...)
 }
 
 // telExecute 执行自动化任务的主要函数
@@ -227,6 +237,10 @@ func (*Automate) LimiterAllow(id string) bool {
 // @return error
 func (a *Automate) ExecuteRun(info initialize.AutomateExecteParams) error {
 	logrus.Debugf("执行动作开始，获取锁--------------------------------")
+	if a.executedSceneIDs == nil {
+		a.executedSceneIDs = make(map[string]bool)
+	}
+	var executeErrors []error
 	for _, v := range info.AutomateExecteSceeInfos {
 		// 检查该场景是否已经执行过，如果执行过则跳过
 		if a.executedSceneIDs[v.SceneAutomationId] {
@@ -240,35 +254,54 @@ func (a *Automate) ExecuteRun(info initialize.AutomateExecteParams) error {
 		}
 		logrus.Debugf("查询自动化是否关闭1: info:%#v,", v.SceneAutomationId)
 		// 查询自动化是否关闭
-		if a.CheckSceneAutomationHasClose(v.SceneAutomationId) {
+		closed, err := a.CheckSceneAutomationHasClose(v.SceneAutomationId)
+		if err != nil {
+			executeErrors = append(executeErrors, fmt.Errorf("query scene automation %s status: %w", v.SceneAutomationId, err))
+			continue
+		}
+		if closed {
 			continue
 		}
 		logrus.Debugf("查询自动化是否关闭2: info:%#v,", info)
 		// 条件判断
-		if !a.AutomateConditionCheck(v.GroupsCondition, info.DeviceId) {
+		conditionOK, err := a.AutomateConditionCheck(v.GroupsCondition, info.DeviceId)
+		if err != nil {
+			executeErrors = append(executeErrors, fmt.Errorf("check scene automation %s conditions: %w", v.SceneAutomationId, err))
+			continue
+		}
+		if !conditionOK {
 			continue
 		}
 		// 场景联动 动作执行
-		err := a.SceneAutomateExecute(v.SceneAutomationId, []string{info.DeviceId}, v.Actions)
+		err = a.SceneAutomateExecute(v.SceneAutomationId, []string{info.DeviceId}, v.Actions)
 		// 场景动作之后装饰
-		a.actionAfterDecorationRun(v.Actions, info.DeviceId, err)
+		decorationErr := a.actionAfterDecorationRun(v.Actions, info.DeviceId, err)
+		if executeErr := errors.Join(err, decorationErr); executeErr != nil {
+			executeErrors = append(executeErrors, fmt.Errorf("execute scene automation %s: %w", v.SceneAutomationId, executeErr))
+			continue
+		}
 
 		// 将已执行的场景ID标记为已执行
 		a.executedSceneIDs[v.SceneAutomationId] = true
 	}
 	logrus.Debugf("执行动作结束，释放锁--------------------------------")
-	return nil
+	return errors.Join(executeErrors...)
 }
 
 // CheckSceneAutomationHasClose
 // @description 查询是否关闭了自动化
-func (*Automate) CheckSceneAutomationHasClose(sceneAutomationId string) bool {
-	ok := dal.CheckSceneAutomationHasClose(sceneAutomationId)
+func (*Automate) CheckSceneAutomationHasClose(sceneAutomationId string) (bool, error) {
+	ok, err := dal.CheckSceneAutomationHasClose(sceneAutomationId)
+	if err != nil {
+		return false, err
+	}
 	// 删除缓存
 	if ok {
-		_ = initialize.NewAutomateCache().DeleteCacheBySceneAutomationId(sceneAutomationId)
+		if err := initialize.NewAutomateCache().DeleteCacheBySceneAutomationId(sceneAutomationId); err != nil {
+			return true, fmt.Errorf("delete scene automation %s cache: %w", sceneAutomationId, err)
+		}
 	}
-	return ok
+	return ok, nil
 }
 
 // SceneAutomateExecute
@@ -276,14 +309,32 @@ func (*Automate) CheckSceneAutomationHasClose(sceneAutomationId string) bool {
 // @params info initialize.AutomateExecteParams
 // @return error
 func (a *Automate) SceneAutomateExecute(sceneAutomationId string, deviceIds []string, actions []model.ActionInfo) error {
-	tenantID := dal.GetSceneAutomationTenantID(context.Background(), sceneAutomationId)
+	return a.SceneAutomateExecuteWithKey(sceneAutomationId, deviceIds, actions, "")
+}
+
+func (a *Automate) SceneAutomateExecuteWithKey(sceneAutomationId string, deviceIds []string, actions []model.ActionInfo, executionKey string) error {
+	tenantLookup := a.sceneAutomationTenant
+	if tenantLookup == nil {
+		tenantLookup = dal.GetSceneAutomationTenantID
+	}
+	tenantID, err := tenantLookup(context.Background(), sceneAutomationId)
+	if err != nil {
+		return fmt.Errorf("query scene automation %s tenant: %w", sceneAutomationId, err)
+	}
 
 	// 执行动作
-	details, err := a.AutomateActionExecute(sceneAutomationId, deviceIds, actions, tenantID)
+	actionExecute := a.actionExecute
+	if actionExecute == nil {
+		actionExecute = a.AutomateActionExecute
+	}
+	details, actionErr := actionExecute(executionKey, deviceIds, actions, tenantID)
+	logSave := a.sceneExecutionLogSave
+	if logSave == nil {
+		logSave = a.sceneExecuteLogSave
+	}
+	logErr := logSave(sceneAutomationId, tenantID, details, actionErr)
 
-	_ = a.sceneExecuteLogSave(sceneAutomationId, details, err)
-
-	return err
+	return errors.Join(actionErr, logErr)
 }
 
 // ActiveSceneExecute
@@ -291,9 +342,13 @@ func (a *Automate) SceneAutomateExecute(sceneAutomationId string, deviceIds []st
 // @params info initialize.AutomateExecteParams
 // @return error
 func (a *Automate) ActiveSceneExecute(scene_id, tenantID string) error {
+	return a.ActiveSceneExecuteWithKey(scene_id, tenantID, "")
+}
+
+func (a *Automate) ActiveSceneExecuteWithKey(scene_id, tenantID, executionKey string) error {
 	actions, err := dal.GetActionInfoListBySceneId([]string{scene_id})
 	if err != nil {
-		return nil
+		return fmt.Errorf("query scene %s actions: %w", scene_id, err)
 	}
 	var (
 		deviceIds      []string
@@ -310,15 +365,19 @@ func (a *Automate) ActiveSceneExecute(scene_id, tenantID string) error {
 			return err
 		}
 	}
-	details, err := a.AutomateActionExecute(scene_id, deviceIds, actions, tenantID)
+	actionExecute := a.actionExecute
+	if actionExecute == nil {
+		actionExecute = a.AutomateActionExecute
+	}
+	details, actionErr := actionExecute(executionKey, deviceIds, actions, tenantID)
 	var exeResult string
-	if err == nil {
+	if actionErr == nil {
 		exeResult = "S"
 	} else {
 		exeResult = "F"
 	}
 	logrus.Debug(details)
-	return dal.SceneLogInsert(&model.SceneLog{
+	logErr := dal.SceneLogInsert(&model.SceneLog{
 		ID:              uuid.NewString(),
 		SceneID:         scene_id,
 		ExecutedAt:      time.Now().UTC(),
@@ -326,12 +385,13 @@ func (a *Automate) ActiveSceneExecute(scene_id, tenantID string) error {
 		ExecutionResult: exeResult,
 		TenantID:        tenantID,
 	})
+	return errors.Join(actionErr, logErr)
 }
 
 // @description sceneExecuteLogSave 自动化场景联动执行
 // @params info initialize.AutomateExecteParams
 // @return error
-func (*Automate) sceneExecuteLogSave(scene_id, details string, err error) error {
+func (*Automate) sceneExecuteLogSave(scene_id, tenantID, details string, err error) error {
 	exeResult := "S"
 	logDetail := details
 
@@ -342,9 +402,6 @@ func (*Automate) sceneExecuteLogSave(scene_id, details string, err error) error 
 	}
 
 	logrus.Debug(logDetail)
-
-	ctx := context.Background()
-	tenantID := dal.GetSceneAutomationTenantID(ctx, scene_id)
 
 	return dal.SceneAutomationLogInsert(&model.SceneAutomationLog{
 		SceneAutomationID: scene_id,
@@ -359,7 +416,7 @@ func (*Automate) sceneExecuteLogSave(scene_id, details string, err error) error 
 // @description  自动化条件判断 复合其中一组条件就返回true
 // @params conditions []initialize.DTConditions
 // @return bool true 表示可以执行动作
-func (a *Automate) AutomateConditionCheck(conditions initialize.DTConditions, deviceId string) bool {
+func (a *Automate) AutomateConditionCheck(conditions initialize.DTConditions, deviceId string) (bool, error) {
 	logrus.Debug("条件判断开始...")
 	// key是groupId val是条件列表
 	conditionsByGroupId := make(map[string]initialize.DTConditions)
@@ -368,71 +425,83 @@ func (a *Automate) AutomateConditionCheck(conditions initialize.DTConditions, de
 	}
 	var result bool
 	for _, val := range conditionsByGroupId {
-		ok, contents := a.AutomateConditionCheckWithGroup(val, deviceId)
+		ok, contents, err := a.AutomateConditionCheckWithGroup(val, deviceId)
+		if err != nil {
+			return false, errors.Join(err, a.conditionAfterDecorationRun(false, val, deviceId, contents))
+		}
 		if ok {
 			result = true
 		}
 		// 组条件执行完成装饰
-		a.conditionAfterDecorationRun(ok, val, deviceId, contents)
+		if err := a.conditionAfterDecorationRun(ok, val, deviceId, contents); err != nil {
+			return false, err
+		}
 	}
-	return result
+	return result, nil
 }
 
 // AutomateConditionCheckWithGroup
 // @description  一组条件比较 一个为假结果就为假
 // @params conditions initialize.DTConditions
 // @return bool
-func (a *Automate) AutomateConditionCheckWithGroup(conditions initialize.DTConditions, deviceId string) (bool, []string) {
+func (a *Automate) AutomateConditionCheckWithGroup(conditions initialize.DTConditions, deviceId string) (bool, []string, error) {
 	var (
 		result   []string
 		resultOk bool = true
 	)
 	for _, val := range conditions {
-		ok, content := a.AutomateConditionCheckWithGroupOne(val, deviceId)
+		ok, content, err := a.AutomateConditionCheckWithGroupOne(val, deviceId)
 		result = append(result, content)
+		if err != nil {
+			return false, result, err
+		}
 		if !ok {
 			resultOk = false
 			break
 		}
 	}
 
-	return resultOk, result
+	return resultOk, result, nil
 }
 
 // @description AutomateConditionCheckWithGroupOne 单个条件验证
 // @params cond model.DeviceTriggerCondition
 // @return bool
-func (a *Automate) AutomateConditionCheckWithGroupOne(cond model.DeviceTriggerCondition, deviceId string) (bool, string) {
+func (a *Automate) AutomateConditionCheckWithGroupOne(cond model.DeviceTriggerCondition, deviceId string) (bool, string, error) {
 	logrus.Debug("条件type:", cond.TriggerConditionType)
 	switch cond.TriggerConditionType {
 	case model.DEVICE_TRIGGER_CONDITION_TYPE_TIME:
-		return a.automateConditionCheckWithTime(cond), ""
+		ok, err := a.automateConditionCheckWithTime(cond)
+		return ok, "", err
 	case model.DEVICE_TRIGGER_CONDITION_TYPE_ONE, model.DEVICE_TRIGGER_CONDITION_TYPE_MULTIPLE:
 		return a.automateConditionCheckWithDevice(cond, deviceId)
 	default:
-		return true, ""
+		return true, "", nil
 	}
 }
 
 // @description automateConditionCheckWithTime 单个条件时间范围验证
 // @params cond model.DeviceTriggerCondition
 // @return bool
-func (*Automate) automateConditionCheckWithTime(cond model.DeviceTriggerCondition) bool {
+func (*Automate) automateConditionCheckWithTime(cond model.DeviceTriggerCondition) (bool, error) {
 	logrus.Debug("时间范围对比开始... 条件:", cond.TriggerValue)
 	nowTime := time.Now().UTC()
 	if cond.TriggerValue == "" {
-		return false
+		return false, errors.New("time trigger value is empty")
 	}
 	valParts := strings.Split(cond.TriggerValue, "|")
 	if len(valParts) < 3 {
-		return false
+		return false, fmt.Errorf("invalid time trigger value %q", cond.TriggerValue)
 	}
 	var ok bool
 	// 获取当前星期
 	weekDay := common.GetWeekDay(nowTime)
 	// 判断当前时间和条件星期
 	for _, char := range valParts[0] {
-		num, _ := strconv.Atoi(string(char))
+		num, err := strconv.Atoi(string(char))
+		if err != nil || num < 1 || num > 7 {
+			return false, fmt.Errorf("invalid weekday %q in time trigger", string(char))
+		}
 		if weekDay == num {
 			ok = true
 			continue
@@ -440,28 +509,29 @@ func (*Automate) automateConditionCheckWithTime(cond model.DeviceTriggerConditio
 	}
 	// 没有在当前指定的星期中
 	if !ok {
-		return false
+		return false, nil
 	}
-	nowTimeNotDay, _ := time.Parse("15:04:05-07:00", nowTime.Format("15:04:05-07:00"))
+	nowTimeNotDay, err := time.Parse("15:04:05-07:00", nowTime.Format("15:04:05-07:00"))
+	if err != nil {
+		return false, fmt.Errorf("parse current time: %w", err)
+	}
 	startTime, err := time.Parse("15:04:05-07:00", valParts[1])
 	if err != nil {
-		logrus.Error("时间格式不正确, 字符串", cond.TriggerValue)
-		return false
+		return false, fmt.Errorf("parse time trigger start %q: %w", valParts[1], err)
 	}
 	if startTime.After(nowTimeNotDay) {
-		return false
+		return false, nil
 	}
 
 	endTime, err := time.Parse("15:04:05-07:00", valParts[2])
 	if err != nil {
-		logrus.Error("时间格式不正确, 字符串", cond.TriggerValue)
-		return false
+		return false, fmt.Errorf("parse time trigger end %q: %w", valParts[2], err)
 	}
 	if endTime.Before(nowTimeNotDay) {
-		return false
+		return false, nil
 	}
 	logrus.Debug("时间范围对比结束。OK")
-	return true
+	return true, nil
 }
 
 func (a *Automate) getActualValue(deviceId string, key string, triggerParamType string) (interface{}, error) {
@@ -479,16 +549,19 @@ func (a *Automate) getActualValue(deviceId string, key string, triggerParamType 
 		return dal.GetDeviceEventOneKeys(deviceId, key)
 	case model.TRIGGER_PARAM_TYPE_STATUS:
 		return dal.GetDeviceCurrentStatus(deviceId)
+	default:
+		return nil, fmt.Errorf("unsupported trigger parameter type %s", triggerParamType)
 	}
-
-	return nil, nil
 }
 
-func (a *Automate) automateConditionCheckWithDevice(cond model.DeviceTriggerCondition, deviceId string) (bool, string) {
+func (a *Automate) automateConditionCheckWithDevice(cond model.DeviceTriggerCondition, deviceId string) (bool, string, error) {
 	logrus.Debug("设备条件验证开始...")
 	// 设备id不存在 返回假
 	if cond.TriggerSource == nil {
-		return false, ""
+		return false, "", errors.New("device trigger source is empty")
+	}
+	if cond.TriggerParamType == nil || cond.TriggerParam == nil {
+		return false, "", errors.New("device trigger parameter is incomplete")
 	}
 
 	// 条件查询
@@ -507,11 +580,16 @@ func (a *Automate) automateConditionCheckWithDevice(cond model.DeviceTriggerCond
 		// 从缓存中获取设备信息
 		device, err := initialize.GetDeviceCacheById(deviceId)
 		if err != nil {
-			logrus.Error("获取设备信息失败", err)
-			return false, ""
+			return false, "", fmt.Errorf("get device %s cache: %w", deviceId, err)
+		}
+		if device == nil || device.Name == nil {
+			return false, "", fmt.Errorf("device %s has no name", deviceId)
 		}
 		deviceName = *device.Name
 	} else {
+		if a.device == nil || a.device.Name == nil {
+			return false, "", fmt.Errorf("device %s has no name", deviceId)
+		}
 		deviceName = *a.device.Name
 	}
 
@@ -525,53 +603,83 @@ func (a *Automate) automateConditionCheckWithDevice(cond model.DeviceTriggerCond
 	switch strings.ToUpper(*cond.TriggerParamType) {
 	case model.TRIGGER_PARAM_TYPE_TEL, model.TRIGGER_PARAM_TYPE_TELEMETRY: // 遥测
 		trigger = "遥测"
-		// actualValue, _ = dal.GetCurrentTelemetryDataOneKeys(deviceId, *cond.TriggerParam)
-		actualValue, _ = a.getActualValue(deviceId, *cond.TriggerParam, model.TRIGGER_PARAM_TYPE_TEL)
+		var err error
+		actualValue, err = a.getActualValue(deviceId, *cond.TriggerParam, model.TRIGGER_PARAM_TYPE_TEL)
+		if err != nil {
+			return false, "", fmt.Errorf("get device %s telemetry %s: %w", deviceId, *cond.TriggerParam, err)
+		}
 		triggerValue = cond.TriggerValue
 		triggerKey = *cond.TriggerParam
 		logrus.Debugf("GetCurrentTelemetryDataOneKeys:triggerOperator:%s, TriggerParam:%s, triggerValue:%v, actualValue:%v", triggerOperator, *cond.TriggerParam, triggerValue, actualValue)
-		dataValue := a.getTriggerParamsValue(triggerKey, dal.GetIdentifierNameTelemetry())
+		dataValue, err := a.getTriggerParamsValue(deviceId, triggerKey, dal.GetIdentifierNameTelemetry())
+		if err != nil {
+			return false, "", err
+		}
 		result = fmt.Sprintf("设备(%s)%s [%s]: %v %s %v", deviceName, trigger, dataValue, actualValue, triggerOperator, triggerValue)
 	case model.TRIGGER_PARAM_TYPE_ATTR, model.TRIGGER_PARAM_TYPE_ATTRIBUTES: // 属性
 		trigger = "属性"
-		actualValue, _ = a.getActualValue(deviceId, *cond.TriggerParam, model.TRIGGER_PARAM_TYPE_ATTR)
+		var err error
+		actualValue, err = a.getActualValue(deviceId, *cond.TriggerParam, model.TRIGGER_PARAM_TYPE_ATTR)
+		if err != nil {
+			return false, "", fmt.Errorf("get device %s attribute %s: %w", deviceId, *cond.TriggerParam, err)
+		}
 		triggerValue = cond.TriggerValue
 		triggerKey = *cond.TriggerParam
-		dataValue := a.getTriggerParamsValue(triggerKey, dal.GetIdentifierNameAttribute())
+		dataValue, err := a.getTriggerParamsValue(deviceId, triggerKey, dal.GetIdentifierNameAttribute())
+		if err != nil {
+			return false, "", err
+		}
 		result = fmt.Sprintf("设备(%s)%s [%s]: %v %s %v", deviceName, trigger, dataValue, actualValue, triggerOperator, triggerValue)
 	case model.TRIGGER_PARAM_TYPE_EVT, model.TRIGGER_PARAM_TYPE_EVENT: // 事件
 		trigger = "事件"
-		actualValue, _ = a.getActualValue(deviceId, *cond.TriggerParam, model.TRIGGER_PARAM_TYPE_EVT)
+		var err error
+		actualValue, err = a.getActualValue(deviceId, *cond.TriggerParam, model.TRIGGER_PARAM_TYPE_EVT)
+		if err != nil {
+			return false, "", fmt.Errorf("get device %s event %s: %w", deviceId, *cond.TriggerParam, err)
+		}
 		triggerValue = cond.TriggerValue
 		triggerKey = *cond.TriggerParam
 		triggerOperator = "=" // 事件默认等于
 		logrus.Debugf("事件...actualValue:%#v, triggerValue:%#v", actualValue, triggerValue)
-		dataValue := a.getTriggerParamsValue(triggerKey, dal.GetIdentifierNameEvent())
+		dataValue, err := a.getTriggerParamsValue(deviceId, triggerKey, dal.GetIdentifierNameEvent())
+		if err != nil {
+			return false, "", err
+		}
 		result = fmt.Sprintf("设备(%s)%s [%s]: %v %s %v", deviceName, trigger, dataValue, actualValue, triggerOperator, triggerValue)
 		if ok, detail, handled := a.automateEventParamConditionCheck(triggerValue, actualValue); handled {
 			if detail != "" {
 				result = fmt.Sprintf("设备(%s)%s [%s]: %s", deviceName, trigger, dataValue, detail)
 			}
 			logrus.Debugf("事件字段级匹配结果:%t, detail:%s", ok, detail)
-			return ok, result
+			return ok, result, nil
 		}
 	case model.TRIGGER_PARAM_TYPE_STATUS: // 状态
 		trigger = "下线"
-		actualValue, _ = a.getActualValue(deviceId, "login", model.TRIGGER_PARAM_TYPE_STATUS)
+		var err error
+		actualValue, err = a.getActualValue(deviceId, "login", model.TRIGGER_PARAM_TYPE_STATUS)
+		if err != nil {
+			return false, "", fmt.Errorf("get device %s status: %w", deviceId, err)
+		}
+		status, ok := actualValue.(string)
+		if !ok {
+			return false, "", fmt.Errorf("device %s status has type %T, want string", deviceId, actualValue)
+		}
 		triggerValue = *cond.TriggerParam
-		if strings.ToUpper(actualValue.(string)) == "ON-LINE" {
+		if strings.ToUpper(status) == "ON-LINE" {
 			trigger = "上线"
 		}
 		result = fmt.Sprintf("设备(%s)已%s", deviceName, trigger)
 		triggerOperator = "="
 		if strings.ToUpper(triggerValue) == "ALL" {
-			return true, result
+			return true, result, nil
 		}
+	default:
+		return false, "", fmt.Errorf("unsupported trigger parameter type %s", *cond.TriggerParamType)
 	}
 	logrus.Debug("automateConditionCheckByOperator:设备条件验证参数...", triggerOperator, triggerValue, actualValue)
 	ok := a.automateConditionCheckByOperator(triggerOperator, triggerValue, actualValue)
 	logrus.Debugf("比较结果:%t", ok)
-	return ok, result
+	return ok, result, nil
 }
 
 func (a *Automate) automateEventParamConditionCheck(triggerValue string, actualValue interface{}) (bool, string, bool) {
@@ -836,13 +944,16 @@ func toBool(value interface{}) bool {
 
 type DataIdentifierName func(device_template_id, identifier string) string
 
-func (*Automate) getTriggerParamsValue(triggerKey string, fc DataIdentifierName) string {
-	tempId, _ := dal.GetDeviceTemplateIdByDeviceId(triggerKey)
+func (*Automate) getTriggerParamsValue(deviceID, triggerKey string, fc DataIdentifierName) (string, error) {
+	tempId, err := dal.GetDeviceTemplateIdByDeviceId(deviceID)
+	if err != nil {
+		return "", fmt.Errorf("query device %s template: %w", deviceID, err)
+	}
 	if tempId == "" {
-		return triggerKey
+		return triggerKey, nil
 	}
 
-	return fc(tempId, triggerKey)
+	return fc(tempId, triggerKey), nil
 }
 
 // automateConditionCheckByOperator
@@ -850,7 +961,6 @@ func (*Automate) getTriggerParamsValue(triggerKey string, fc DataIdentifierName)
 // @params cond model.DeviceTriggerCondition
 // @return bool
 func (a *Automate) automateConditionCheckByOperator(operator string, condValue string, actualValue interface{}) bool {
-	// logrus.Warningf("比较:operator:%s, condValue:%s, actualValue: %s, result:%d", operator, condValue, actualValue, strings.Compare(actualValue, condValue))
 	switch value := actualValue.(type) {
 	case string:
 		return a.automateConditionCheckByOperatorWithString(operator, condValue, value)
@@ -872,8 +982,6 @@ func float64Equal(a, b float64) bool {
 // @params cond model.DeviceTriggerCondition
 // @return bool
 func (*Automate) automateConditionCheckByOperatorWithFloat(operator string, condValue string, actualValue float64) bool {
-	// logrus.Warningf("比较:operator:%s, condValue:%s, actualValue: %s, result:%d", operator, condValue, actualValue, strings.Compare(actualValue, condValue))
-
 	switch operator {
 	case model.CONDITION_TRIGGER_OPERATOR_EQ:
 		condValueFloat, err := strconv.ParseFloat(condValue, 64)
@@ -953,7 +1061,6 @@ func (*Automate) automateConditionCheckByOperatorWithFloat(operator string, cond
 // @params cond model.DeviceTriggerCondition
 // @return bool
 func (*Automate) automateConditionCheckByOperatorWithString(operator string, condValue string, actualValue string) bool {
-	logrus.Warningf("比较:operator:%s, condValue:%s, actualValue: %s, result:%d", operator, condValue, actualValue, strings.Compare(actualValue, condValue))
 	switch operator {
 	case model.CONDITION_TRIGGER_OPERATOR_EQ:
 		return strings.EqualFold(strings.ToUpper(actualValue), strings.ToUpper(condValue))
@@ -1033,7 +1140,7 @@ func (*Automate) automateConditionCheckByOperatorWithString(operator string, con
 // @params deviceId string
 // @params actions []model.ActionInf
 // @return void
-func (*Automate) AutomateActionExecute(_ string, deviceIds []string, actions []model.ActionInfo, tenantID string) (string, error) {
+func (*Automate) AutomateActionExecute(executionKey string, deviceIds []string, actions []model.ActionInfo, tenantID string) (string, error) {
 	logrus.Debug("动作开始执行:")
 	var (
 		result    string
@@ -1047,13 +1154,13 @@ func (*Automate) AutomateActionExecute(_ string, deviceIds []string, actions []m
 		logrus.Debug("actionType:", action.ActionType)
 		switch action.ActionType {
 		case model.AUTOMATE_ACTION_TYPE_ONE: // 单个设置
-			actionService = &AutomateTelemetryActionOne{TenantID: tenantID}
+			actionService = &AutomateTelemetryActionOne{TenantID: tenantID, ExecutionKey: executionKey}
 		case model.AUTOMATE_ACTION_TYPE_ALARM: // 告警触发
 			actionService = &AutomateTelemetryActionAlarm{DeviceIds: deviceIds}
 		case model.AUTOMATE_ACTION_TYPE_MULTIPLE: // 单类设置
-			actionService = &AutomateTelemetryActionMultiple{DeviceIds: deviceIds, TenantID: tenantID}
+			actionService = &AutomateTelemetryActionMultiple{DeviceIds: deviceIds, TenantID: tenantID, ExecutionKey: executionKey}
 		case model.AUTOMATE_ACTION_TYPE_SCENE: // 激活场景
-			actionService = &AutomateTelemetryActionScene{TenantID: tenantID}
+			actionService = &AutomateTelemetryActionScene{TenantID: tenantID, ExecutionKey: executionKey}
 		case model.AUTOMATE_ACTION_TYPE_SERVICE: // 服务
 			actionService = &AutomateTelemetryActionService{}
 		}
@@ -1065,10 +1172,8 @@ func (*Automate) AutomateActionExecute(_ string, deviceIds []string, actions []m
 		// 	actionService.AutomateActionRun(action)
 		// }(actionService, action)
 		actionMessage, err := actionService.AutomateActionRun(action)
-		if err != nil && resultErr == nil {
-			resultErr = err
-		}
 		if err != nil {
+			resultErr = errors.Join(resultErr, err)
 			result += fmt.Sprintf("%s 执行失败;", actionMessage)
 		} else {
 			result += fmt.Sprintf("%s 执行成功;", actionMessage)

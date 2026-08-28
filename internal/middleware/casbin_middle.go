@@ -19,10 +19,20 @@ func CasbinRBAC() gin.HandlerFunc {
 		if strings.Contains(c.Request.URL.Path, "api") {
 			url := strings.TrimLeft(c.Request.URL.Path, "/")
 			// 判断接口是否需要校验
-			isVerify := service.GroupApp.Casbin.GetUrl(url)
+			isVerify, err := service.GroupApp.Casbin.GetUrl(url)
+			if err != nil {
+				c.Error(err)
+				c.Abort()
+				return
+			}
 			if isVerify {
 				userClaims := c.MustGet("claims").(*utils.UserClaims)
-				isSuccess := service.GroupApp.Casbin.Verify(userClaims.ID, url)
+				isSuccess, err := service.GroupApp.Casbin.Verify(userClaims.ID, url)
+				if err != nil {
+					c.Error(err)
+					c.Abort()
+					return
+				}
 				if !isSuccess {
 					c.JSON(http.StatusBadRequest, gin.H{"error": "非法访问"})
 					c.Abort()

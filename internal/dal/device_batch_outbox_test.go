@@ -1,6 +1,7 @@
 package dal
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -72,11 +73,59 @@ func TestCreateDeviceBatchIsAtomicAndIdempotent(t *testing.T) {
 	}
 	conflictingOutbox := *outbox
 	_, _, err = createDeviceBatch(db, conflictingDevices, &conflictingOutbox)
-	require.ErrorContains(t, err, "already owned")
+	require.ErrorIs(t, err, ErrDeviceBatchOwnershipConflict)
+	var batchErr *DeviceBatchError
+	require.ErrorAs(t, err, &batchErr)
+	require.Equal(t, DeviceBatchOwnershipConflict, batchErr.Kind)
+	require.Equal(t, "device-conflict", batchErr.DeviceNumber)
 	require.NoError(t, db.Model(&model.Device{}).Where("device_number = ?", "device-new").Count(&deviceCount).Error)
 	require.Zero(t, deviceCount)
 	require.NoError(t, db.Model(&model.DeviceBatchOutbox{}).Count(&outboxCount).Error)
 	require.EqualValues(t, 1, outboxCount)
+
+	attributeConflictName := "different-name"
+	attributeConflictDevices := []*model.Device{
+		{ID: "attribute-new", Name: &attributeConflictName, Voucher: "new-voucher", TenantID: "tenant-1", DeviceNumber: "device-a", ActivateFlag: "active", ServiceAccessID: &serviceAccessID},
+		{ID: "attribute-would-roll-back", Name: &newName, Voucher: "new-voucher-2", TenantID: "tenant-1", DeviceNumber: "device-attribute-new", ActivateFlag: "active", ServiceAccessID: &serviceAccessID},
+	}
+	attributeConflictOutbox := *outbox
+	_, _, err = createDeviceBatch(db, attributeConflictDevices, &attributeConflictOutbox)
+	require.ErrorIs(t, err, ErrDeviceBatchAttributeConflict)
+	require.ErrorAs(t, err, &batchErr)
+	require.Equal(t, DeviceBatchAttributeConflict, batchErr.Kind)
+	require.Equal(t, "device-a", batchErr.DeviceNumber)
+	require.NoError(t, db.Model(&model.Device{}).Where("device_number = ?", "device-attribute-new").Count(&deviceCount).Error)
+	require.Zero(t, deviceCount)
+	require.NoError(t, db.Model(&model.DeviceBatchOutbox{}).Count(&outboxCount).Error)
+	require.EqualValues(t, 1, outboxCount)
+
+	_, _, err = createDeviceBatch(db, nil, outbox)
+	require.ErrorIs(t, err, ErrDeviceBatchInvalidInput)
+	require.False(t, errors.Is(err, ErrDeviceBatchOwnershipConflict))
+	require.ErrorAs(t, err, &batchErr)
+	require.Equal(t, DeviceBatchInvalidInput, batchErr.Kind)
+	require.Equal(t, "devices", batchErr.Field)
+}
+
+func TestCreateDeviceBatchDoesNotClassifyDatabaseFailureAsConflict(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:device-batch-database-error?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.Device{}, &model.DeviceBatchOutbox{}))
+	require.NoError(t, db.Exec("CREATE UNIQUE INDEX devices_database_error_number_unique ON devices(device_number)").Error)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+
+	serviceAccessID := "access-1"
+	name := "Device"
+	_, _, err = createDeviceBatch(db, []*model.Device{{
+		ID: "device-1", Name: &name, Voucher: "voucher", TenantID: "tenant-1",
+		DeviceNumber: "device-1", ActivateFlag: "active", ServiceAccessID: &serviceAccessID,
+	}}, &model.DeviceBatchOutbox{TenantID: "tenant-1", ServiceAccessID: serviceAccessID})
+	require.Error(t, err)
+	require.False(t, errors.Is(err, ErrDeviceBatchInvalidInput))
+	require.False(t, errors.Is(err, ErrDeviceBatchOwnershipConflict))
+	require.False(t, errors.Is(err, ErrDeviceBatchAttributeConflict))
 }
 
 func TestDeviceBatchOutboxClaimRetryAndComplete(t *testing.T) {

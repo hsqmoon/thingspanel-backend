@@ -12,6 +12,7 @@ import (
 	model "project/internal/model"
 	"project/pkg/constant"
 
+	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 )
 
@@ -32,7 +33,14 @@ type AutomateTelemetryAction interface {
 	AutomateActionRun(model.ActionInfo) (string, error)
 }
 
-func AutomateActionDeviceMqttSend(deviceId string, action model.ActionInfo, tenantID string) (string, error) {
+func automationActionMessageID(executionKey, actionID, deviceID string) string {
+	if executionKey == "" {
+		return ""
+	}
+	return uuid.NewSHA1(automationExecutionNamespace, []byte(executionKey+":"+actionID+":"+deviceID)).String()
+}
+
+func AutomateActionDeviceMqttSend(deviceId string, action model.ActionInfo, tenantID, executionKey string) (string, error) {
 	var executeMsg string
 	// 获取设备缓存信息
 	deviceInfo, err := initialize.GetDeviceCacheById(deviceId)
@@ -54,15 +62,22 @@ func AutomateActionDeviceMqttSend(deviceId string, action model.ActionInfo, tena
 	// }
 	ctx := context.Background()
 
-	var userId string
-	userId, _ = dal.GetUserIdBYTenantID(tenantID)
+	userId, err := dal.GetUserIdBYTenantID(tenantID)
+	if err != nil {
+		return executeMsg + " 租户用户查询失败", fmt.Errorf("query tenant %s user: %w", tenantID, err)
+	}
+	if userId == "" {
+		return executeMsg + " 租户用户不存在", fmt.Errorf("tenant %s has no user", tenantID)
+	}
 	logrus.Debug("AutomateActionDeviceMqttSend:", tenantID, ", userId:", userId)
 	operationType := strconv.Itoa(constant.Auto)
+	messageID := automationActionMessageID(executionKey, action.ID, deviceId)
 	// var valueMap = make(map[string]string)
 	switch *action.ActionParamType {
 	case AUTOMATE_ACTION_PARAM_TYPE_TEL, AUTOMATE_ACTION_PARAM_TYPE_TELEMETRY, AUTOMATE_ACTION_PARAM_TYPE_C_TELEMETRY:
 		msgReq := model.PutMessage{
-			DeviceID: deviceId,
+			DeviceID:  deviceId,
+			MessageID: messageID,
 		}
 		//valueMap = map[string]string{
 		//	*action.ActionParam: *action.ActionValue,
@@ -70,12 +85,12 @@ func AutomateActionDeviceMqttSend(deviceId string, action model.ActionInfo, tena
 		//valueStr, _ := json.Marshal(valueMap)
 		//msgReq.Value = string(valueStr)
 		msgReq.Value = *action.ActionValue
-		logrus.Warning(msgReq)
 		return executeMsg + fmt.Sprintf(" 遥测指令:%s", msgReq.Value), GroupApp.TelemetryData.TelemetryPutMessage(ctx, userId, &msgReq, operationType)
 
 	case AUTOMATE_ACTION_PARAM_TYPE_ATTR, AUTOMATE_ACTION_PARAM_TYPE_ATTRIBUTES, AUTOMATE_ACTION_PARAM_TYPE_C_ATTRIBUTES:
 		msgReq := model.AttributePutMessage{
-			DeviceID: deviceId,
+			DeviceID:  deviceId,
+			MessageID: messageID,
 		}
 		//valueMap = map[string]string{
 		//	*action.ActionParam: *action.ActionValue,
@@ -95,12 +110,17 @@ func AutomateActionDeviceMqttSend(deviceId string, action model.ActionInfo, tena
 		if err != nil {
 			return executeMsg + "命令下发解析数据失败", err
 		}
-		value, _ := json.Marshal(info.Params)
+		value, err := json.Marshal(info.Params)
+		if err != nil {
+			return executeMsg + "命令参数序列化失败", err
+		}
 		valueStr := string(value)
 		msgReq := model.PutMessageForCommand{
-			DeviceID: deviceId,
-			Value:    &valueStr,
-			Identify: info.Method,
+			DeviceID:  deviceId,
+			Value:     &valueStr,
+			Identify:  info.Method,
+			CommandID: messageID,
+			MessageID: messageID,
 		}
 		//msgReq := model.PutMessageForCommand{
 		//	DeviceID: deviceId,
@@ -116,20 +136,20 @@ func AutomateActionDeviceMqttSend(deviceId string, action model.ActionInfo, tena
 
 // 单个设备 10
 type AutomateTelemetryActionOne struct {
-	TenantID string
+	TenantID, ExecutionKey string
 }
 
 func (a *AutomateTelemetryActionOne) AutomateActionRun(action model.ActionInfo) (string, error) {
 	if action.ActionTarget == nil {
 		return "单设备执行，设备id不存在", errors.New("设备id不存在")
 	}
-	return AutomateActionDeviceMqttSend(*action.ActionTarget, action, a.TenantID)
+	return AutomateActionDeviceMqttSend(*action.ActionTarget, action, a.TenantID, a.ExecutionKey)
 }
 
 // 单类设备 11
 type AutomateTelemetryActionMultiple struct {
-	DeviceIds []string
-	TenantID  string
+	DeviceIds              []string
+	TenantID, ExecutionKey string
 }
 
 func (a *AutomateTelemetryActionMultiple) AutomateActionRun(action model.ActionInfo) (string, error) {
@@ -138,7 +158,7 @@ func (a *AutomateTelemetryActionMultiple) AutomateActionRun(action model.ActionI
 		errs     error
 	)
 	for _, deviceId := range a.DeviceIds {
-		msg, err := AutomateActionDeviceMqttSend(deviceId, action, a.TenantID)
+		msg, err := AutomateActionDeviceMqttSend(deviceId, action, a.TenantID, a.ExecutionKey)
 		if err != nil && errs == nil {
 			errs = err
 		}
@@ -150,7 +170,7 @@ func (a *AutomateTelemetryActionMultiple) AutomateActionRun(action model.ActionI
 
 // 激活场景 20
 type AutomateTelemetryActionScene struct {
-	TenantID string
+	TenantID, ExecutionKey string
 }
 
 func (a *AutomateTelemetryActionScene) AutomateActionRun(action model.ActionInfo) (string, error) {
@@ -162,7 +182,8 @@ func (a *AutomateTelemetryActionScene) AutomateActionRun(action model.ActionInfo
 	if err != nil {
 		return "场景激活", err
 	}
-	return fmt.Sprintf("场景激活:%s", sceneInfo.Name), GroupApp.ActiveSceneExecute(*action.ActionTarget, a.TenantID)
+	nestedExecutionKey := automationActionMessageID(a.ExecutionKey, action.ID, *action.ActionTarget)
+	return fmt.Sprintf("场景激活:%s", sceneInfo.Name), GroupApp.ActiveSceneExecuteWithKey(*action.ActionTarget, a.TenantID, nestedExecutionKey)
 }
 
 // 警告 30
@@ -182,7 +203,10 @@ func (*AutomateTelemetryActionAlarm) AutomateActionRun(action model.ActionInfo) 
 	}
 
 	// 获取告警名称，无论是否执行成功都可以显示
-	alarmName = dal.GetAlarmNameWithCache(*action.ActionTarget)
+	alarmName, err := dal.GetAlarmNameWithCache(*action.ActionTarget)
+	if err != nil {
+		return "告警服务", fmt.Errorf("获取告警名称失败: %w", err)
+	}
 
 	// 处理告警已存在的情况 - 不将其标记为错误
 	if reason == "告警已存在" {

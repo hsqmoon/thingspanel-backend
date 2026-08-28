@@ -13,8 +13,13 @@ type DashboardMenuApi struct{}
 func (*DashboardMenuApi) GetDashboardMenu(c *gin.Context) {
 	dashboardID := c.Param("dashboardId")
 	userClaims := c.MustGet("claims").(*utils.UserClaims)
+	tenantID, err := service.ResolveDashboardScope(userClaims)
+	if err != nil {
+		c.Error(err)
+		return
+	}
 
-	data, err := service.GroupApp.DashboardMenu.GetTenantDashboardMenu(userClaims.TenantID, dashboardID)
+	data, err := service.GroupApp.DashboardMenu.GetTenantDashboardMenu(tenantID, dashboardID)
 	if err != nil {
 		c.Error(err)
 		return
@@ -43,8 +48,13 @@ func (*DashboardMenuApi) SaveDashboardMenu(c *gin.Context) {
 func (*DashboardMenuApi) DeleteDashboardMenu(c *gin.Context) {
 	dashboardID := c.Param("dashboardId")
 	userClaims := c.MustGet("claims").(*utils.UserClaims)
+	tenantID, err := service.ResolveDashboardScope(userClaims)
+	if err != nil {
+		c.Error(err)
+		return
+	}
 
-	err := service.GroupApp.DashboardMenu.DeleteTenantDashboardMenu(userClaims.TenantID, dashboardID)
+	err = service.GroupApp.DashboardMenu.DeleteTenantDashboardMenu(tenantID, dashboardID)
 	if err != nil {
 		c.Error(err)
 		return

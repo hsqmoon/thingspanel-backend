@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +18,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jinzhu/copier"
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -57,63 +58,65 @@ func (*ServiceAccess) List(req *model.GetServiceAccessByPageReq, userClaims *uti
 	return listRsp, err
 }
 
-func (*ServiceAccess) Update(req *model.UpdateAccessReq) error {
-	// 查询服务接入点信息
-	serviceAccess, err := dal.GetServiceAccessByID(req.ID)
+func (*ServiceAccess) Update(req *model.UpdateAccessReq, claims *utils.UserClaims) error {
+	if claims == nil || claims.TenantID == "" {
+		return errcode.NewWithMessage(errcode.CodeNoPermission, "no tenant permission")
+	}
+
+	serviceAccess, err := dal.GetServiceAccessByIDAndTenant(req.ID, claims.TenantID)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.NewWithMessage(errcode.CodeNoPermission, "service access not owned by current tenant")
+		}
 		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
 			"sql_error": err.Error(),
 		})
 	}
 	updates := make(map[string]interface{})
 	if req.Name != nil {
-		updates["name"] = req.Name
+		updates["name"] = *req.Name
 	}
 	if req.ServiceAccessConfig != nil {
-		if *req.ServiceAccessConfig == "" {
-			*req.ServiceAccessConfig = "{}"
+		serviceAccessConfig := *req.ServiceAccessConfig
+		if serviceAccessConfig == "" {
+			serviceAccessConfig = "{}"
 		}
-		serviceAccess.ServiceAccessConfig = req.ServiceAccessConfig
+		updates["service_access_config"] = serviceAccessConfig
 	}
 	if req.Voucher != nil {
-		updates["voucher"] = req.Voucher
+		updates["voucher"] = *req.Voucher
+	}
+	_, host, err := dal.GetServicePluginHttpAddressByID(serviceAccess.ServicePluginID)
+	if err != nil {
+		return err
+	}
+	changesJSON, err := json.Marshal(updates)
+	if err != nil {
+		return errcode.WithData(100004, map[string]interface{}{"error": err.Error()})
+	}
+	changesHash := sha256.Sum256(changesJSON)
+	eventHash := sha256.Sum256([]byte("service_access.updated\x00" + claims.TenantID + "\x00" + req.IdempotencyKey))
+	eventID := fmt.Sprintf("%x", eventHash)
+	payload, err := json.Marshal(map[string]interface{}{
+		"event_id": eventID, "idempotency_key": eventID,
+		"event_type": "service_access.updated", "service_access_id": req.ID,
+		"change_hash": fmt.Sprintf("%x", changesHash),
+	})
+	if err != nil {
+		return errcode.WithData(100004, map[string]interface{}{"error": err.Error()})
+	}
+	outbox := &model.DeviceBatchOutbox{
+		EventID: eventID, IdempotencyKey: eventID, Destination: host, Payload: string(payload),
 	}
 	updates["update_at"] = time.Now().UTC()
-	err = dal.UpdateServiceAccess(req.ID, updates)
-	if err != nil {
-		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
-			"sql_error": err.Error(),
-		})
-	}
-	if serviceAccess.Voucher != "" {
-		// 查询服务地址
-		_, host, err := dal.GetServicePluginHttpAddressByID(serviceAccess.ServicePluginID)
-		if err != nil {
-			return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
-				"sql_error": err.Error(),
-			})
+	if err := dal.UpdateServiceAccessWithOutbox(req.ID, claims.TenantID, updates, outbox); err != nil {
+		if errors.Is(err, dal.ErrIdempotencyConflict) {
+			return errcode.NewWithMessage(errcode.CodeParamError, err.Error())
 		}
-		dataMap := make(map[string]interface{})
-		dataMap["service_access_id"] = req.ID
-		// 将dataMap转json字符串
-		dataBytes, err := json.Marshal(dataMap)
-		if err != nil {
-			return errcode.WithData(100004, map[string]interface{}{
-				"error":     err.Error(),
-				"data_type": fmt.Sprintf("%T", dataMap),
-			})
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errcode.NewWithMessage(errcode.CodeNoPermission, "service access not owned by current tenant")
 		}
-		// 通知服务插件
-		logrus.Debug("发送通知给服务插件")
-
-		rsp, err := http_client.Notification("1", string(dataBytes), host)
-		if err != nil {
-			return errcode.WithVars(105001, map[string]interface{}{
-				"error": err.Error(),
-			})
-		}
-		logrus.Debug("通知服务插件成功")
-		logrus.Debug(string(rsp))
+		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{"sql_error": err.Error()})
 	}
 	return nil
 }
@@ -157,9 +160,11 @@ func (*ServiceAccess) GetVoucherForm(req *model.GetServiceAccessVoucherFormReq) 
 }
 
 // GetServiceAccessDeviceList
-func (*ServiceAccess) GetServiceAccessDeviceList(req *model.ServiceAccessDeviceListReq, userClaims *utils.UserClaims) (interface{}, error) {
-	// 通过voucher获取service_plugin_id
-	serviceAccess, err := dal.GetServiceAccessByVoucher(req.Voucher, userClaims.TenantID)
+func (*ServiceAccess) GetServiceAccessDeviceList(ctx context.Context, req *model.ServiceAccessDeviceListReq, userClaims *utils.UserClaims) (interface{}, error) {
+	if userClaims == nil || userClaims.TenantID == "" {
+		return nil, errcode.NewWithMessage(errcode.CodeNoPermission, "no tenant permission")
+	}
+	serviceAccess, err := dal.GetServiceAccessByIDAndTenant(req.ServiceAccessID, userClaims.TenantID)
 	if err != nil {
 		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
 			"sql_error": err.Error(),
@@ -172,7 +177,7 @@ func (*ServiceAccess) GetServiceAccessDeviceList(req *model.ServiceAccessDeviceL
 			"sql_error": err.Error(),
 		})
 	}
-	data, err := http_client.GetServiceAccessDeviceList(httpAddress, req.Voucher, strconv.Itoa(req.PageSize), strconv.Itoa(req.Page))
+	data, err := http_client.GetServiceAccessDeviceList(ctx, httpAddress, serviceAccess.Voucher, strconv.Itoa(req.PageSize), strconv.Itoa(req.Page))
 	if err != nil {
 		return nil, errcode.NewWithMessage(105001, err.Error())
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
@@ -21,6 +22,9 @@ type HeartbeatMonitor struct {
 
 // NewHeartbeatMonitor 创建心跳监控服务实例
 func NewHeartbeatMonitor(redis *redis.Client, publisher StatusPublisher, logger *logrus.Logger) *HeartbeatMonitor {
+	if logger == nil {
+		logger = logrus.New()
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &HeartbeatMonitor{
 		redis:           redis,
@@ -43,6 +47,12 @@ func (m *HeartbeatMonitor) Start() error {
 		m.logger.Info("HeartbeatMonitor: Redis expiry event subscription is disabled, skipping subscription")
 		return nil
 	}
+	if m.redis == nil {
+		return fmt.Errorf("redis client is not initialized")
+	}
+	if m.statusPublisher == nil {
+		return fmt.Errorf("status publisher is not initialized")
+	}
 
 	// 配置 Redis 过期通知
 	if err := m.configureRedis(); err != nil {
@@ -58,6 +68,14 @@ func (m *HeartbeatMonitor) Start() error {
 	// 订阅过期事件
 	pattern := fmt.Sprintf("__keyevent@%d__:expired", dbNum)
 	pubsub := m.redis.PSubscribe(m.ctx, pattern)
+	startupCtx, cancel := context.WithTimeout(m.ctx, 5*time.Second)
+	defer cancel()
+	if _, err := pubsub.Receive(startupCtx); err != nil {
+		if closeErr := pubsub.Close(); closeErr != nil {
+			return fmt.Errorf("failed to subscribe to redis expiry events: %w; failed to close subscription: %v", err, closeErr)
+		}
+		return fmt.Errorf("failed to subscribe to redis expiry events: %w", err)
+	}
 
 	m.logger.WithField("pattern", pattern).Info("HeartbeatMonitor started, subscribing to Redis expiry events")
 
@@ -70,10 +88,12 @@ func (m *HeartbeatMonitor) Start() error {
 				m.logger.Info("HeartbeatMonitor stopped")
 				pubsub.Close()
 				return
-			case msg := <-ch:
-				if msg != nil {
-					m.handleExpiredKey(msg)
+			case msg, ok := <-ch:
+				if !ok {
+					m.logger.Error("HeartbeatMonitor Redis subscription closed unexpectedly")
+					return
 				}
+				m.handleExpiredKey(msg)
 			}
 		}
 	}()
@@ -93,8 +113,7 @@ func (m *HeartbeatMonitor) configureRedis() error {
 	// E - keyevent 事件, x - 过期事件
 	err := m.redis.ConfigSet(m.ctx, "notify-keyspace-events", "Ex").Err()
 	if err != nil {
-		m.logger.WithError(err).Warn("Failed to set Redis notify-keyspace-events, may already be configured")
-		// 不返回错误,可能已经配置过
+		return err
 	}
 	return nil
 }
@@ -139,7 +158,5 @@ func (m *HeartbeatMonitor) handleExpiredKey(msg *redis.Message) {
 				"source":    source,
 			}).Error("Failed to publish device offline event")
 		}
-	} else {
-		m.logger.Warn("StatusPublisher not available, cannot send offline event")
 	}
 }

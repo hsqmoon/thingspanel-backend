@@ -8,8 +8,9 @@ type GetAttributeSetLogsListByPageReq struct {
 }
 
 type AttributePutMessage struct {
-	DeviceID string `json:"device_id" form:"device_id" validate:"required,max=36"`
-	Value    string `json:"value" form:"value" validate:"required"`
+	DeviceID  string `json:"device_id" form:"device_id" validate:"required,max=36"`
+	Value     string `json:"value" form:"value" validate:"required"`
+	MessageID string `json:"message_id,omitempty" form:"message_id" validate:"omitempty,max=36"`
 }
 
 // 发送

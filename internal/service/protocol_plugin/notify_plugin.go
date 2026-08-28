@@ -2,11 +2,12 @@ package protocolplugin
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
+
 	"project/internal/dal"
 	"project/third_party/others/http_client"
-
-	"github.com/sirupsen/logrus"
 )
 
 // 设备配置更新后主动断开设备连接
@@ -30,9 +31,13 @@ func DeviceConfigUpdateAndDisconnect(deviceConfigID string, protocolType string,
 			return err
 		}
 		// 断开设备连接
+		var disconnectErrors []error
 		for _, deviceID := range deviceIDs {
-			DisconnectDevice(deviceID, host)
+			if err := DisconnectDevice(deviceID, host); err != nil {
+				disconnectErrors = append(disconnectErrors, fmt.Errorf("disconnect gateway %s: %w", deviceID, err))
+			}
 		}
+		return errors.Join(disconnectErrors...)
 	} else if deviceType == "1" || deviceType == "2" {
 		// 根据设备配置ID获取设备列表
 		devices, err := dal.GetDevicesByDeviceConfigID(deviceConfigID)
@@ -40,17 +45,20 @@ func DeviceConfigUpdateAndDisconnect(deviceConfigID string, protocolType string,
 			return err
 		}
 		// 断开设备连接
+		var disconnectErrors []error
 		for _, device := range devices {
-			DisconnectDevice(device.ID, host)
+			if err := DisconnectDevice(device.ID, host); err != nil {
+				disconnectErrors = append(disconnectErrors, fmt.Errorf("disconnect device %s: %w", device.ID, err))
+			}
 		}
-		return nil
+		return errors.Join(disconnectErrors...)
 	}
 	return nil
 
 }
 
 // 通知协议插件
-func DisconnectDevice(deviceID string, httpAddress string) error {
+func DisconnectDevice(deviceID string, httpAddress string) (err error) {
 	type ReqData struct {
 		DeviceID string `json:"device_id"`
 	}
@@ -61,19 +69,24 @@ func DisconnectDevice(deviceID string, httpAddress string) error {
 	}
 	rsp, err := http_client.DisconnectDevice(reqDataBytes, httpAddress)
 	if err != nil {
-		logrus.Warnf("update succeeded, but connect plugin failed: %s", err)
-		return err
+		return fmt.Errorf("disconnect protocol plugin device: %w", err)
+	}
+	defer func() {
+		if closeErr := rsp.Body.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close protocol plugin response: %w", closeErr))
+		}
+	}()
+	if rsp.StatusCode != http.StatusOK {
+		return fmt.Errorf("protocol plugin disconnect returned HTTP %s", rsp.Status)
 	}
 	//解析返回数据
 	var rspData http_client.RspData
 	err = json.NewDecoder(rsp.Body).Decode(&rspData)
 	if err != nil {
-		logrus.Warnf("update succeeded, but plugin rspdata decode failed: %s", err)
-		return err
+		return fmt.Errorf("decode protocol plugin disconnect response: %w", err)
 	}
-	if rspData.Code != 200 {
-		logrus.Warnf("update succeeded, but plugin rsp: %s", rspData.Message)
-		return err
+	if rspData.Code != http.StatusOK {
+		return fmt.Errorf("protocol plugin rejected disconnect: code=%d message=%s", rspData.Code, rspData.Message)
 	}
 	return nil
 }

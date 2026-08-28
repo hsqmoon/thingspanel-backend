@@ -425,20 +425,25 @@ func (s *MarketBundlePublish) exportDashboards(ctx context.Context, dashboards [
 			continue
 		}
 
-		// Parse device bindings from export data
-		var deviceBindings []model.DeviceBinding
-		if len(exportData.DeviceBindings) > 0 {
-			if err := json.Unmarshal(exportData.DeviceBindings, &deviceBindings); err != nil {
-				logrus.Warnf("Failed to parse device bindings for dashboard %s: %v", db.ID, err)
+		deviceBindings, fieldBindings, err := parseMarketDashboardBindings(
+			exportData.DeviceBindings,
+			exportData.FieldBindings,
+		)
+		if err != nil {
+			if strings.Contains(err.Error(), "device bindings") {
+				errors = append(errors, model.PrecheckError{
+					Code:    model.ErrCodeDashboardExportFailed,
+					Message: fmt.Sprintf("failed to parse device bindings for dashboard %s: %v", db.Name, err),
+					Field:   "dashboards." + db.ID + ".deviceBindings",
+				})
+			} else {
+				errors = append(errors, model.PrecheckError{
+					Code:    model.ErrCodeDashboardExportFailed,
+					Message: fmt.Sprintf("failed to parse field bindings for dashboard %s: %v", db.Name, err),
+					Field:   "dashboards." + db.ID + ".fieldBindings",
+				})
 			}
-		}
-
-		// Parse field bindings from export data
-		var fieldBindings []model.FieldBinding
-		if len(exportData.FieldBindings) > 0 {
-			if err := json.Unmarshal(exportData.FieldBindings, &fieldBindings); err != nil {
-				logrus.Warnf("Failed to parse field bindings for dashboard %s: %v", db.ID, err)
-			}
+			continue
 		}
 
 		results = append(results, model.DashboardTemplate{
@@ -456,6 +461,25 @@ func (s *MarketBundlePublish) exportDashboards(ctx context.Context, dashboards [
 	}
 
 	return results, errors
+}
+
+func parseMarketDashboardBindings(
+	deviceBindingsRaw json.RawMessage,
+	fieldBindingsRaw json.RawMessage,
+) ([]model.DeviceBinding, []model.FieldBinding, error) {
+	var deviceBindings []model.DeviceBinding
+	if len(deviceBindingsRaw) > 0 {
+		if err := json.Unmarshal(deviceBindingsRaw, &deviceBindings); err != nil {
+			return nil, nil, fmt.Errorf("device bindings: %w", err)
+		}
+	}
+	var fieldBindings []model.FieldBinding
+	if len(fieldBindingsRaw) > 0 {
+		if err := json.Unmarshal(fieldBindingsRaw, &fieldBindings); err != nil {
+			return nil, nil, fmt.Errorf("field bindings: %w", err)
+		}
+	}
+	return deviceBindings, fieldBindings, nil
 }
 
 // validateFieldBindings validates that all field bindings reference valid fields in thing models.

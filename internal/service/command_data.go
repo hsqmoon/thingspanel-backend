@@ -40,7 +40,10 @@ func (c *CommandData) CommandPutMessage(ctx context.Context, operatorID string, 
 	}
 
 	// 2. 生成 message_id，8位唯一字符串
-	messageId := uuid.NewString()[:8]
+	messageId := putMessageReq.MessageID
+	if messageId == "" {
+		messageId = uuid.NewString()[:8]
+	}
 
 	// 3. 获取设备类型和协议类型
 	var deviceType string
@@ -179,7 +182,7 @@ func (c *CommandData) resolveDeviceInfo(device *model.Device, deviceType, protoc
 		var err error
 		topicPrefix, err = dal.GetServicePluginSubTopicPrefixByDeviceConfigID(*targetDevice.DeviceConfigID)
 		if err != nil {
-			logrus.WithError(err).Warn("failed to get sub topic prefix from service_plugins")
+			logrus.WithError(err).Error("failed to get sub topic prefix from service_plugins")
 		}
 	}
 

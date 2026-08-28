@@ -93,7 +93,7 @@ func (w *telemetryWriter) stop(timeout time.Duration) {
 	case <-w.doneCh:
 		w.logger.Info("telemetry writer stopped gracefully")
 	case <-time.After(timeout):
-		w.logger.Warn("telemetry writer stop timeout")
+		w.logger.Error("telemetry writer stop timeout")
 	}
 }
 

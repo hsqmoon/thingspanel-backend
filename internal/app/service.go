@@ -101,7 +101,7 @@ func (m *ServiceManager) StopAll() {
 				logrus.Infof("服务 %s 已成功停止", service.Name())
 			}
 		case <-ctx.Done():
-			logrus.Warnf("停止服务 %s 超时", service.Name())
+			logrus.Errorf("停止服务 %s 超时", service.Name())
 		}
 	}
 

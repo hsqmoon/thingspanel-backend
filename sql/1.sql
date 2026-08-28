@@ -1153,7 +1153,13 @@ CREATE TABLE public.one_time_tasks (
 	enabled varchar(10) NOT NULL, -- 是否启用 Y-启用 N-停用
 	remark varchar(255) NULL,
 	expiration_time int8 NOT NULL, -- 过期时间（默认大于执行时间五分钟5min10min30min1h1day）单位分钟
+	claim_token uuid NULL,
+	lease_expires_at timestamptz NULL,
+	claim_attempts integer NOT NULL DEFAULT 0,
+	last_error text NULL,
 	CONSTRAINT one_time_tasks_pkey PRIMARY KEY (id),
+	CONSTRAINT one_time_tasks_claim_attempts_check CHECK (claim_attempts >= 0),
+	CONSTRAINT one_time_tasks_claim_lease_check CHECK (((claim_token IS NULL) AND (lease_expires_at IS NULL)) OR ((claim_token IS NOT NULL) AND (lease_expires_at IS NOT NULL))),
 	CONSTRAINT fk_scene_automation_id FOREIGN KEY (scene_automation_id) REFERENCES public.scene_automations(id) ON DELETE CASCADE
 );
 
@@ -1164,6 +1170,7 @@ COMMENT ON COLUMN public.one_time_tasks.execution_time IS '执行时间';
 COMMENT ON COLUMN public.one_time_tasks.executing_state IS '1.执行状态 NEX-未执行 EXE-已执行 EXP-过期未执行';
 COMMENT ON COLUMN public.one_time_tasks.enabled IS '是否启用 Y-启用 N-停用';
 COMMENT ON COLUMN public.one_time_tasks.expiration_time IS '过期时间（默认大于执行时间五分钟5min10min30min1h1day）单位分钟';
+CREATE INDEX one_time_tasks_due_claim_idx ON public.one_time_tasks (execution_time, lease_expires_at) WHERE enabled = 'Y' AND executing_state = 'NEX';
 
 
 -- public.periodic_tasks definition
@@ -1181,7 +1188,13 @@ CREATE TABLE public.periodic_tasks (
 	enabled varchar(10) NOT NULL, -- 是否启用 Y-启用 N-停用
 	remark varchar(255) NULL,
 	expiration_time int8 NOT NULL, -- 过期时间（默认大于执行时间五分钟）单位分钟
+	claim_token uuid NULL,
+	lease_expires_at timestamptz NULL,
+	claim_attempts integer NOT NULL DEFAULT 0,
+	last_error text NULL,
 	CONSTRAINT periodic_tasks_pkey PRIMARY KEY (id),
+	CONSTRAINT periodic_tasks_claim_attempts_check CHECK (claim_attempts >= 0),
+	CONSTRAINT periodic_tasks_claim_lease_check CHECK (((claim_token IS NULL) AND (lease_expires_at IS NULL)) OR ((claim_token IS NOT NULL) AND (lease_expires_at IS NOT NULL))),
 	CONSTRAINT scene_automation_id_fkey FOREIGN KEY (scene_automation_id) REFERENCES public.scene_automations(id) ON DELETE CASCADE
 );
 
@@ -1192,6 +1205,7 @@ COMMENT ON COLUMN public.periodic_tasks.task_type IS '任务类型 HOUR DAY WEEK
 COMMENT ON COLUMN public.periodic_tasks.execution_time IS '执行时间';
 COMMENT ON COLUMN public.periodic_tasks.enabled IS '是否启用 Y-启用 N-停用';
 COMMENT ON COLUMN public.periodic_tasks.expiration_time IS '过期时间（默认大于执行时间五分钟）单位分钟';
+CREATE INDEX periodic_tasks_due_claim_idx ON public.periodic_tasks (execution_time, lease_expires_at) WHERE enabled = 'Y';
 
 
 -- public.products definition
@@ -1665,7 +1679,6 @@ INSERT INTO public.sys_dict_language (id, dict_id, language_code, "translation")
 INSERT INTO public.sys_function (id, "name", enable_flag, description, remark) VALUES('function_1', 'use_captcha', 'disable', '验证码登陆', NULL);
 INSERT INTO public.sys_function (id, "name", enable_flag, description, remark) VALUES('function_2', 'enable_reg', 'disable', '租户注册', NULL);
 
--- INSERT INTO public.users (id, "name", phone_number, email, status, authority, "password", tenant_id, remark, additional_info, created_at, updated_at) VALUES('00000000-4fe9-b409-67c3-000000000000', 'admin', '+86 13100000000', 'super@super.cn', 'N', 'SYS_ADMIN', '$2a$10$dPDIqoOEt.rSDwEWsSHCqe9/PJEsnWvRK76DwXVZUFM/7J0D3ikfq', 'aaaaaa', 'dolor', '{}'::json, NULL, '2024-03-06 14:52:52.390');
 INSERT INTO public.users (id, "name", phone_number, email, status, authority, "password", tenant_id, remark, additional_info, created_at, updated_at) VALUES('11111111-4fe9-b409-67c3-111111111111', 'Tenant', '+86 13166666666', 'tenant@tenant.cn', 'N', 'TENANT_ADMIN', '$2a$10$zvPRDn0okgLt1t/OjQ.K5eZjGc3Mva7tmA8VlASsP8flfv0PwEz76', 'd616bcbb', '', '{}'::json, '2024-06-05 16:48:11.097', '2024-06-05 16:48:11.097');
 
 INSERT INTO public.data_policy (id, data_type, retention_days, last_cleanup_time, last_cleanup_data_time, enabled, remark) VALUES('b', '2', 15, '2024-06-05 10:02:00.003', '2024-05-21 10:02:00.003', '1', '');
@@ -1703,7 +1716,6 @@ INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, o
 INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('650bc444-7672-1123-1e41-7e37365b0186', '0', 'alarm', 1, 115, '/alarm', 'mdi:alert', 'self', '["TENANT_ADMIN"]'::json, '告警', '2024-03-17 09:01:52.183', '', 'route.alarm', 'layout.base');
 INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('76bfc16e-ed22-bcc0-c688-d462666e8a8d', '0', 'personal-center', 3, 999, '/personal-center', 'carbon:user-role', '1', '["TENANT_ADMIN","SYS_ADMIN"]'::json, '个人中心', '2024-03-17 09:27:01.048', '', 'route.personal_center', 'layout.base$view.personal-center');
 INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('975c9550-5db9-7b4c-5dea-7a4c326a37ff', '676e8f33-875a-0473-e9ca-c82fd09fef57', 'automation_scene-edit', 3, 1, '/automation/scene-edit', 'mdi:apps-box', '1', '["TENANT_ADMIN"]'::json, '新增场景', '2024-04-04 10:50:43.219', '', 'route.automation_scene-edit', 'view.automation_scene-edit');
-INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('680cae76-6c50-90e6-c2f9-58d01389aa08', '9a11b3e4-9982-a0f0-996c-a9be6e738947', 'data-service_rule-engine', 3, 21, '/data-service/rule-engine', 'mdi:menu', '1', '["SYS_ADMIN"]'::json, '规则引擎', '2024-03-07 17:06:02.804', '', 'route.data-service_rule-engine', 'view.data-service_rule-engine');
 -- INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('a2654c98-3749-c88b-0472-b414049ca532', '95e2a961-382b-f4a6-87b3-1898123c95bc', 'route.visualization_kanban', 3, 1131, '/visualization/kanban', 'tabler:device-tv', 'self', '["TENANT_ADMIN","SYS_ADMIN"]'::json, '看板', '2024-03-07 21:39:58.608', '', 'route.visualization_kanban', 'view.visualization_panel');
 INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('f960c45c-6d5b-e67a-c4ff-1f0e869c1625', '5373a6a2-1861-af35-eb4c-adfd5ca55ecd', 'device_service-details', 3, 1130, '/device/service-details', 'ph:align-bottom', '1', '["TENANT_ADMIN"]'::json, '服务详情', '2024-07-01 23:16:56.668', '', 'route.device_service_details', '');
 INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('86cb08fa-8b08-3d99-4b3a-d6132ee93a0f', '5373a6a2-1861-af35-eb4c-adfd5ca55ecd', 'device_config-detail', 3, 1127, '/device/config-detail', 'icon-park-outline:data-server', '1', '["TENANT_ADMIN"]'::json, '设备配置详情', '2024-03-10 11:13:25.253', '', 'route.device_config-detail', 'view.device_config-detail');
@@ -1713,11 +1725,138 @@ INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, o
 INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('59612e2f-e297-acb7-fcf4-143bf6e66109', '5373a6a2-1861-af35-eb4c-adfd5ca55ecd', 'device_details-child', 3, 1124, '/device/details-child', '', '1', '["TENANT_ADMIN"]'::json, '子设备详情', '2024-05-10 20:33:34.869', '', 'route.device_details-child', 'view.device_details-child');
 INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('29a684f9-c2bb-1a6f-6045-314944bef580', 'a2c53126-029f-7138-4d7a-f45491f396da', 'plug_in', 3, 32, '/apply/plugin', 'mdi:emoticon', '0', '["SYS_ADMIN"]'::json, '插件管理', '2024-06-29 01:04:51.301', '', 'route.apply_in', '');
 INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('a190f7a5-1501-3814-9dd1-f3e1fbe7265e', '0', 'home', 3, 0, '/home', 'mdi:alpha-f-box-outline', 'self', '["SYS_ADMIN","TENANT_ADMIN"]'::json, '首页', '2024-02-26 16:07:20.202', 'home', 'route.home', 'layout.base$view.home');
-INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('9a11b3e4-9982-a0f0-996c-a9be6e738947', '0', 'data-service', 1, 2, '/data-service', 'mdi:monitor-dashboard', '1', '["SYS_ADMIN"]'::json, '数据服务', '2024-03-07 17:05:04.101', '', 'route.data-service', 'layout.base');
-INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('3aaca04b-2a2e-dfca-9fb4-0b2819362783', '2cc0c5ba-f086-91e5-0b8c-ad0546b1f2a9', 'test_kan-ban-test', 3, 1, '/test/kan-ban-test', '', '1', '["SYS_ADMIN","TENANT_ADMIN"]'::json, '看板测试', '2024-05-21 01:17:16.911', '', 'route.test_kan-ban-test', 'view.test_kan-ban-test');
 INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('2fe87d7c-627e-9ca3-94dd-6d0249853bd4', '990af72f-06ce-5f23-3af6-1694bd479c96', 'management_user', 3, 1, '/management/user', '', '0', '["SYS_ADMIN","TENANT_ADMIN"]'::json, 'ment-user', '2024-09-04 10:04:34.658', '', 'default', '');
 INSERT INTO public.sys_ui_elements (id, parent_id, element_code, element_type, orders, param1, param2, param3, authority, description, created_at, remark, multilingual, route_path) VALUES('18892c6e-ca04-f2b5-c243-f2c7230b3f33', '990af72f-06ce-5f23-3af6-1694bd479c96', 'manage_user', 3, 1, '/manage/user', '', '0', '["TENANT_ADMIN","SYS_ADMIN"]'::json, 'user', '2024-09-04 10:05:06.377', '', 'default', '');
 INSERT INTO public.logo (id, system_name, logo_cache, logo_background, logo_loading, home_background, remark) VALUES('a', 'ThingsPanel', '', '', '', '', NULL);
 
 ALTER TABLE "public"."scene_action_info"
 ALTER COLUMN "action_param" TYPE varchar(50) COLLATE "pg_catalog"."default";
+
+CREATE TABLE IF NOT EXISTS public.dashboard_delete_jobs (
+    id varchar(36) PRIMARY KEY,
+    tenant_id varchar(36) NOT NULL,
+    dashboard_id varchar(99) NOT NULL,
+    status varchar(16) NOT NULL DEFAULT 'pending',
+    claim_token varchar(36),
+    attempts integer NOT NULL DEFAULT 0,
+    next_retry_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    lease_expires_at timestamptz,
+    last_error text,
+    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delivered_at timestamptz,
+    CONSTRAINT dashboard_delete_jobs_tenant_dashboard_unique UNIQUE (tenant_id, dashboard_id),
+    CONSTRAINT dashboard_delete_jobs_status_check CHECK (status IN ('pending', 'processing', 'delivered')),
+    CONSTRAINT dashboard_delete_jobs_attempts_check CHECK (attempts >= 0),
+    CONSTRAINT dashboard_delete_jobs_claim_check CHECK (
+        (status = 'processing' AND claim_token IS NOT NULL AND lease_expires_at IS NOT NULL)
+        OR (status <> 'processing' AND claim_token IS NULL AND lease_expires_at IS NULL)
+    ),
+    CONSTRAINT dashboard_delete_jobs_delivered_check CHECK (
+        (status = 'delivered' AND delivered_at IS NOT NULL)
+        OR (status <> 'delivered' AND delivered_at IS NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS dashboard_delete_jobs_due_idx
+    ON public.dashboard_delete_jobs (status, next_retry_at, lease_expires_at, created_at, id)
+    WHERE status <> 'delivered';
+
+CREATE TABLE IF NOT EXISTS public.market_bundle_installations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    idempotency_key varchar(255) NOT NULL,
+    request_hash varchar(64) NOT NULL,
+    bundle_key varchar(63) NOT NULL,
+    bundle_version varchar(128) NOT NULL,
+    tenant_id varchar(100) NOT NULL,
+    status varchar(30) NOT NULL DEFAULT 'DOWNLOADING',
+    error_code varchar(50),
+    error_message text,
+    warnings jsonb DEFAULT '[]',
+    downloaded_at timestamptz,
+    verified_at timestamptz,
+    models_installed_at timestamptz,
+    dashboards_created_at timestamptz,
+    completed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_installation_idempotency_tenant UNIQUE (idempotency_key, tenant_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.market_resource_mappings (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    installation_id uuid NOT NULL REFERENCES public.market_bundle_installations(id) ON DELETE CASCADE,
+    tenant_id varchar(100) NOT NULL,
+    resource_type varchar(30) NOT NULL,
+    market_resource_key varchar(100) NOT NULL,
+    market_version varchar(128) NOT NULL,
+    local_id varchar(100) NOT NULL,
+    local_name varchar(255),
+    status varchar(20) NOT NULL DEFAULT 'active',
+    metadata jsonb,
+    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_resource_mapping UNIQUE (installation_id, resource_type, market_resource_key)
+);
+
+CREATE TABLE IF NOT EXISTS public.market_bundle_binding_status (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    installation_id uuid NOT NULL REFERENCES public.market_bundle_installations(id) ON DELETE CASCADE,
+    binding_key varchar(100) NOT NULL,
+    device_template_key varchar(100) NOT NULL,
+    required boolean NOT NULL DEFAULT true,
+    local_device_id varchar(100),
+    bound_at timestamptz,
+    status varchar(20) NOT NULL DEFAULT 'pending',
+    error_message text,
+    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_binding_key UNIQUE (installation_id, binding_key)
+);
+
+CREATE TABLE IF NOT EXISTS public.market_installation_audit (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    installation_id uuid NOT NULL,
+    tenant_id varchar(100) NOT NULL,
+    action varchar(50) NOT NULL,
+    prev_state varchar(30),
+    new_state varchar(30),
+    resource_type varchar(30),
+    resource_key varchar(100),
+    local_id varchar(100),
+    details jsonb,
+    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.market_install_notification_outbox (
+    id uuid PRIMARY KEY,
+    installation_id uuid NOT NULL REFERENCES public.market_bundle_installations(id) ON DELETE CASCADE,
+    tenant_id varchar(100) NOT NULL,
+    bundle_key varchar(63) NOT NULL,
+    bundle_version varchar(128) NOT NULL,
+    market_token text NOT NULL,
+    status varchar(16) NOT NULL DEFAULT 'pending',
+    claim_token uuid,
+    attempts integer NOT NULL DEFAULT 0,
+    next_retry_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    lease_expires_at timestamptz,
+    last_error text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delivered_at timestamptz,
+    CONSTRAINT market_install_notification_install_unique UNIQUE (installation_id),
+    CONSTRAINT market_install_notification_status_check CHECK (status IN ('pending', 'processing', 'delivered', 'credential_required')),
+    CONSTRAINT market_install_notification_attempts_check CHECK (attempts >= 0),
+    CONSTRAINT market_install_notification_claim_check CHECK (
+        (status = 'processing' AND claim_token IS NOT NULL AND lease_expires_at IS NOT NULL)
+        OR (status <> 'processing' AND claim_token IS NULL AND lease_expires_at IS NULL)
+    ),
+    CONSTRAINT market_install_notification_delivered_check CHECK (
+        (status = 'delivered' AND delivered_at IS NOT NULL)
+        OR (status <> 'delivered' AND delivered_at IS NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS market_install_notification_due_idx
+    ON public.market_install_notification_outbox (status, next_retry_at, lease_expires_at, created_at, id)
+    WHERE status <> 'delivered';

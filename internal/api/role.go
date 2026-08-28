@@ -59,7 +59,12 @@ func (*RoleApi) DeleteRole(c *gin.Context) {
 	id := c.Param("id")
 
 	// 需要角色没有被用户使用
-	if service.GroupApp.Casbin.HasRole(id) {
+	hasRole, err := service.GroupApp.Casbin.HasRole(id)
+	if err != nil {
+		c.Error(err)
+		return
+	}
+	if hasRole {
 		c.Error(errcode.WithData(errcode.CodeParamError, map[string]interface{}{
 			"role_id": id,
 			"error":   "Role in use",
@@ -67,7 +72,7 @@ func (*RoleApi) DeleteRole(c *gin.Context) {
 		return
 	}
 
-	err := service.GroupApp.Role.DeleteRole(id)
+	err = service.GroupApp.Role.DeleteRole(id)
 	if err != nil {
 		c.Error(err)
 		return

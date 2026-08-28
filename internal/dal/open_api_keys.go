@@ -3,8 +3,11 @@ package dal
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gen"
 
@@ -93,20 +96,19 @@ func UpdateOpenAPIKey(id string, updates map[string]interface{}) error {
 // param id 密钥ID
 // @note 删除时会同时清理Redis缓存
 func DeleteOpenAPIKey(id string) error {
-	// 删除数据库记录
-	_, err := query.OpenAPIKey.Where(query.OpenAPIKey.ID.Eq(id)).Delete()
+	apiKey, err := GetOpenAPIKeyByID(id)
 	if err != nil {
 		return err
 	}
-
-	// 清理缓存
-	cacheKey := "openapi:key:" + id
-	err = global.REDIS.Del(context.Background(), cacheKey).Err()
-	if err != nil {
-		logrus.Warnf("删除OpenAPI密钥缓存失败: %v", err)
+	if err := global.REDIS.Del(
+		context.Background(),
+		"apikey:"+apiKey.APIKey,
+		"apikey:createdid:"+apiKey.APIKey,
+	).Err(); err != nil {
+		return fmt.Errorf("delete OpenAPI key cache: %w", err)
 	}
-
-	return nil
+	_, err = query.OpenAPIKey.Where(query.OpenAPIKey.ID.Eq(id)).Delete()
+	return err
 }
 
 // OpenAPIKeyQuery OpenAPI密钥查询结构体
@@ -137,9 +139,15 @@ func VerifyOpenAPIKey(ctx context.Context, appKey string) (string, string, error
 	// 从Redis缓存中获取租户ID
 	cacheKey := "apikey:" + appKey
 	cacheKeyCreatedID := "apikey:createdid:" + appKey
-	tenantID, err := global.REDIS.Get(ctx, cacheKey).Result()
-	createdID, err1 := global.REDIS.Get(ctx, cacheKeyCreatedID).Result()
-	if err != nil || err1 != nil {
+	tenantID, tenantCacheErr := global.REDIS.Get(ctx, cacheKey).Result()
+	createdID, creatorCacheErr := global.REDIS.Get(ctx, cacheKeyCreatedID).Result()
+	if tenantCacheErr != nil || creatorCacheErr != nil {
+		if tenantCacheErr != nil && !errors.Is(tenantCacheErr, redis.Nil) {
+			return "", "", fmt.Errorf("read OpenAPI tenant cache: %w", tenantCacheErr)
+		}
+		if creatorCacheErr != nil && !errors.Is(creatorCacheErr, redis.Nil) {
+			return "", "", fmt.Errorf("read OpenAPI creator cache: %w", creatorCacheErr)
+		}
 		// 如果缓存中不存在，则从数据库中查询
 		apiKey, err := query.OpenAPIKey.WithContext(ctx).Where(query.OpenAPIKey.APIKey.Eq(appKey), query.OpenAPIKey.Status.Eq(1)).First()
 		if err != nil {
@@ -147,14 +155,16 @@ func VerifyOpenAPIKey(ctx context.Context, appKey string) (string, string, error
 		}
 		// 将查询结果存入Redis缓存，有效期为1小时
 		tenantID = apiKey.TenantID
-		createdID = *apiKey.CreatedID
-		err = global.REDIS.Set(ctx, cacheKey, tenantID, time.Hour).Err()
-		if err != nil {
-			logrus.Warnf("设置OpenAPI密钥缓存失败: %v", err)
+		if apiKey.CreatedID == nil {
+			return "", "", errors.New("OpenAPI key creator is missing")
 		}
-		err = global.REDIS.Set(ctx, cacheKeyCreatedID, createdID, time.Hour).Err()
-		if err != nil {
-			logrus.Warnf("设置OpenAPI密钥创建者ID缓存失败: %v", err)
+		createdID = *apiKey.CreatedID
+		if err := global.REDIS.Set(ctx, cacheKey, tenantID, time.Hour).Err(); err != nil {
+			return "", "", fmt.Errorf("write OpenAPI tenant cache: %w", err)
+		}
+		if err := global.REDIS.Set(ctx, cacheKeyCreatedID, createdID, time.Hour).Err(); err != nil {
+			_ = global.REDIS.Del(ctx, cacheKey).Err()
+			return "", "", fmt.Errorf("write OpenAPI creator cache: %w", err)
 		}
 	}
 	return tenantID, createdID, nil

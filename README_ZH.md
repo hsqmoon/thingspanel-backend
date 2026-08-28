@@ -44,13 +44,6 @@ ThingsPanel的插件主要有如下几类，分别是：
   <img src="./files/iphone-2.png" width="30%">
 </div>
 
-## 演示
-地址：http://demo.thingspanel.cn
-
-账户：test@test.cn
-
-密码：123456
-
 ## 快速安装使用
 请通过 [ThingsPanel 一键安装页面](https://install.thingspanel.io/) 安装，安装程序会自动完成环境检查、部署并启动服务。
 

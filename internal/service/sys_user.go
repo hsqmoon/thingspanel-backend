@@ -98,16 +98,16 @@ func (u *User) CreateUser(createUserReq *model.CreateUserReq, claims *utils.User
 	}
 
 	// 生成密码
-	hashedPassword := utils.BcryptHash(createUserReq.Password)
-	if hashedPassword == "" {
+	hashedPassword, err := utils.BcryptHash(createUserReq.Password)
+	if err != nil {
 		return errcode.WithData(errcode.CodeDecryptError, map[string]interface{}{
-			"error": "Failed to hash password",
+			"error": err.Error(),
 		})
 	}
 	user.Password = hashedPassword
 
 	// 创建用户和地址（使用事务）
-	err := dal.CreateUserWithAddress(&user, createUserReq.Address)
+	err = dal.CreateUserWithAddress(&user, createUserReq.Address)
 	if err != nil {
 		logrus.Error(err)
 		if strings.Contains(err.Error(), "users_un") {
@@ -129,7 +129,10 @@ func (u *User) CreateUser(createUserReq *model.CreateUserReq, claims *utils.User
 
 	// 绑定角色
 	if len(createUserReq.RoleIDs) > 0 {
-		ok := GroupApp.Casbin.AddRolesToUser(user.ID, createUserReq.RoleIDs)
+		ok, casbinErr := GroupApp.Casbin.AddRolesToUser(user.ID, createUserReq.RoleIDs)
+		if casbinErr != nil {
+			return errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": casbinErr.Error()})
+		}
 		if !ok {
 			logrus.Error("Failed to add roles to user")
 			return errcode.WithData(errcode.CodeSystemError, map[string]interface{}{
@@ -164,7 +167,11 @@ func (u *User) Login(ctx context.Context, loginReq *model.LoginReq) (*model.Logi
 		loginReq.Password = passwords
 	}
 	// 对比密码
-	if !utils.BcryptCheck(loginReq.Password, user.Password) {
+	passwordMatches, err := utils.BcryptCheck(loginReq.Password, user.Password)
+	if err != nil {
+		return nil, errcode.WithData(errcode.CodeDecryptError, map[string]interface{}{"error": err.Error()})
+	}
+	if !passwordMatches {
 		return nil, errcode.New(errcode.CodeInvalidAuth)
 	}
 
@@ -392,7 +399,11 @@ func (*User) ResetPassword(ctx context.Context, resetPasswordReq *model.ResetPas
 	}
 	t := time.Now().UTC()
 	info.PasswordLastUpdated = &t
-	info.Password = utils.BcryptHash(resetPasswordReq.Password)
+	hashedPassword, err := utils.BcryptHash(resetPasswordReq.Password)
+	if err != nil {
+		return errcode.WithData(errcode.CodeDecryptError, map[string]interface{}{"error": err.Error()})
+	}
+	info.Password = hashedPassword
 	if err = db.UpdateByEmail(ctx, info, user.Password, user.PasswordLastUpdated); err != nil {
 		logrus.Error(ctx, "[ResetPasswordByCode]Update Users info failed:", err)
 		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
@@ -531,9 +542,9 @@ func (*User) UpdateUser(updateUserReq *model.UpdateUserReq, claims *utils.UserCl
 	t := time.Now().UTC()
 	// 密码更新处理
 	if updateUserReq.Password != nil {
-		hashedPassword := utils.BcryptHash(*updateUserReq.Password)
-		if hashedPassword == "" {
-			return errcode.New(errcode.CodeDecryptError) // 密码加密失败
+		hashedPassword, hashErr := utils.BcryptHash(*updateUserReq.Password)
+		if hashErr != nil {
+			return errcode.WithData(errcode.CodeDecryptError, map[string]interface{}{"error": hashErr.Error()})
 		}
 		user.Password = hashedPassword
 		user.PasswordLastUpdated = &t
@@ -565,10 +576,15 @@ func (*User) UpdateUser(updateUserReq *model.UpdateUserReq, claims *utils.UserCl
 	// 修改角色
 	if updateUserReq.RoleIDs != nil {
 		// 先删除原有角色
-		GroupApp.Casbin.RemoveUserAndRole(updateUserReq.ID)
+		if _, casbinErr := GroupApp.Casbin.RemoveUserAndRole(updateUserReq.ID); casbinErr != nil {
+			return errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": casbinErr.Error()})
+		}
 		// 绑定新角色
 		if len(updateUserReq.RoleIDs) > 0 {
-			ok := GroupApp.Casbin.AddRolesToUser(updateUserReq.ID, updateUserReq.RoleIDs)
+			ok, casbinErr := GroupApp.Casbin.AddRolesToUser(updateUserReq.ID, updateUserReq.RoleIDs)
+			if casbinErr != nil {
+				return errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": casbinErr.Error()})
+			}
 			if !ok {
 				return errcode.WithData(errcode.CodeSystemError, map[string]interface{}{
 					"error":    "Failed to update user roles",
@@ -706,7 +722,11 @@ func (*User) UpdateUserInfo(ctx context.Context, updateUserReq *model.UpdateUser
 
 	// 处理修改密码的情况
 	if updateUserReq.Password != nil {
-		updateUserReq.Password = StringPtr(utils.BcryptHash(*updateUserReq.Password))
+		hashedPassword, err := utils.BcryptHash(*updateUserReq.Password)
+		if err != nil {
+			return errcode.WithData(errcode.CodeDecryptError, map[string]interface{}{"error": err.Error()})
+		}
+		updateUserReq.Password = StringPtr(hashedPassword)
 	}
 
 	r, err := dal.UpdateUserInfoByIdPersonal(user.ID, updateUserReq)
@@ -855,7 +875,11 @@ func (u *User) EmailRegister(ctx context.Context, req *model.EmailRegisterReq) (
 	}
 
 	// bcrypt加密密码
-	req.Password = utils.BcryptHash(req.Password)
+	hashedPassword, err := utils.BcryptHash(req.Password)
+	if err != nil {
+		return nil, errcode.WithData(errcode.CodeDecryptError, map[string]interface{}{"error": err.Error()})
+	}
+	req.Password = hashedPassword
 
 	now := time.Now().UTC()
 	tenantID, err := common.GenerateRandomString(8)
@@ -981,7 +1005,10 @@ func (u *User) InitSuperAdmin(ctx context.Context, req *model.SuperAdminInitReq)
 	}
 
 	// bcrypt 加密密码
-	hashedPassword := utils.BcryptHash(req.Password)
+	hashedPassword, err := utils.BcryptHash(req.Password)
+	if err != nil {
+		return nil, errcode.WithData(errcode.CodeDecryptError, map[string]interface{}{"error": err.Error()})
+	}
 
 	now := time.Now().UTC()
 

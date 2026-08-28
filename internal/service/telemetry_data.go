@@ -1298,7 +1298,10 @@ func (t *TelemetryData) TelemetryPutMessage(ctx context.Context, userID string, 
 	// 步骤6: 先创建日志记录（状态为初始）
 	// ---------------------------------------------
 	description := "下发遥测日志记录"
-	logID := uuid.NewString()
+	logID := param.MessageID
+	if logID == "" {
+		logID = uuid.NewString()
+	}
 	logInfo := &model.TelemetrySetLog{
 		ID:            logID,
 		DeviceID:      param.DeviceID,
@@ -1319,10 +1322,13 @@ func (t *TelemetryData) TelemetryPutMessage(ctx context.Context, userID string, 
 	// 写入日志记录
 	_, err = dal.TelemetrySetLogsQuery{}.Create(ctx, logInfo)
 	if err != nil {
-		logrus.Error(ctx, "failed to create telemetry set log", err)
-		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
-			"error": err.Error(),
-		})
+		existing, lookupErr := dal.GetTelemetrySetLogByID(logID)
+		if lookupErr != nil || existing == nil || existing.DeviceID != param.DeviceID || existing.Datum == nil || *existing.Datum != param.Value {
+			logrus.Error(ctx, "failed to create telemetry set log", err)
+			return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
 	}
 
 	// 步骤7: 通过 Downlink Bus 发布遥测消息

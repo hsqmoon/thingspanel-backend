@@ -118,7 +118,9 @@ func (*DeviceConfig) UpdateDeviceConfig(req model.UpdateDeviceConfigReq) (any, e
 		})
 	}
 	// 清除设备配置信息缓存
-	initialize.DelDeviceConfigCache(req.Id)
+	if err := initialize.DelDeviceConfigCache(req.Id); err != nil {
+		return nil, errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": "invalidate device config cache: " + err.Error()})
+	}
 	// 获取设备配置信息
 	data, err := dal.GetDeviceConfigByID(req.Id)
 	if err != nil {
@@ -183,8 +185,12 @@ func (*DeviceConfig) DeleteDeviceConfig(id string) error {
 	}
 
 	// 清除设备配置信息缓存
-	initialize.DelDeviceConfigCache(id)
-	initialize.DelDeviceDataScriptCache(id)
+	if err := initialize.DelDeviceConfigCache(id); err != nil {
+		return errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": "invalidate device config cache: " + err.Error()})
+	}
+	if err := initialize.DelDeviceDataScriptCache(id); err != nil {
+		return errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": "invalidate device script cache: " + err.Error()})
+	}
 
 	return nil
 }
@@ -257,7 +263,9 @@ func (*DeviceConfig) BatchUpdateDeviceConfig(req *model.BatchUpdateDeviceConfigR
 			})
 		}
 		// 清除设备信息缓存
-		initialize.DelDeviceCache(deviceID)
+		if err := initialize.DelDeviceCache(deviceID); err != nil {
+			return errcode.WithData(errcode.CodeSystemError, map[string]interface{}{"error": "invalidate device cache: " + err.Error()})
+		}
 
 	}
 	return nil

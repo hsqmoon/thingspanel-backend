@@ -16,6 +16,7 @@ import (
 var (
 	ErrServiceAccessHasDevices    = errors.New("service access still has devices")
 	ErrPendingDeviceBatchDelivery = errors.New("service access has pending device batch delivery")
+	ErrIdempotencyConflict        = errors.New("idempotency key was already used for a different request")
 )
 
 // DeleteServiceAccess serializes device creation and access deletion by
@@ -67,11 +68,56 @@ func DeleteServiceAccess(id, tenantID string) error {
 	})
 }
 
-func UpdateServiceAccess(id string, updates map[string]interface{}) error {
-	q := query.ServiceAccess
-	queryBuilder := q.WithContext(context.Background())
-	_, err := queryBuilder.Where(q.ID.Eq(id)).Updates(updates)
-	return err
+// UpdateServiceAccessWithOutbox commits the tenant-owned access-point update
+// and its durable plugin notification as one database transaction.
+func UpdateServiceAccessWithOutbox(id, tenantID string, updates map[string]interface{}, outbox *model.DeviceBatchOutbox) error {
+	if id == "" || tenantID == "" || outbox == nil {
+		return gorm.ErrRecordNotFound
+	}
+
+	return global.DB.Transaction(func(tx *gorm.DB) error {
+		var serviceAccess model.ServiceAccess
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND tenant_id = ?", id, tenantID).
+			Take(&serviceAccess).Error; err != nil {
+			return err
+		}
+
+		var existing model.DeviceBatchOutbox
+		err := tx.Where("idempotency_key = ?", outbox.IdempotencyKey).Take(&existing).Error
+		if err == nil {
+			if existing.TenantID != tenantID || existing.ServiceAccessID != id || existing.Payload != outbox.Payload {
+				return ErrIdempotencyConflict
+			}
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		result := tx.Model(&model.ServiceAccess{}).
+			Where("id = ? AND tenant_id = ?", id, tenantID).
+			Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+
+		now, err := databaseTime(tx)
+		if err != nil {
+			return err
+		}
+		outbox.TenantID = tenantID
+		outbox.ServiceAccessID = id
+		outbox.ServiceAccessRefID = &id
+		outbox.Status = model.DeviceBatchDeliveryPending
+		outbox.NextRetryAt = now
+		outbox.CreatedAt = now
+		outbox.UpdatedAt = now
+		return tx.Create(outbox).Error
+	})
 }
 
 func GetServiceAccessListByPage(req *model.GetServiceAccessByPageReq, tenantID string) (int64, interface{}, error) {
@@ -101,19 +147,6 @@ func GetServiceAccessListByPage(req *model.GetServiceAccessByPageReq, tenantID s
 		return count, serviceAccess, err
 	}
 	return count, serviceAccess, err
-}
-
-// 通过凭证获取服务接入点信息
-func GetServiceAccessByVoucher(voucher string, tenantID string) (*model.ServiceAccess, error) {
-	// 使用first查询
-	q := query.ServiceAccess
-	queryBuilder := q.WithContext(context.Background())
-	serviceAccess, err := queryBuilder.Where(q.Voucher.Eq(voucher)).Where(q.TenantID.Eq(tenantID)).First()
-	if err != nil {
-		logrus.Error(err)
-		return nil, err
-	}
-	return serviceAccess, nil
 }
 
 // 通过service_plugin_id获取服务接入点列表

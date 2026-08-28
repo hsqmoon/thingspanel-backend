@@ -45,14 +45,15 @@ func (*Alarm) CreateAlarmConfig(req *model.CreateAlarmConfigReq) (data *model.Al
 
 // DeleteAlarmConfig 删除告警配置
 func (*Alarm) DeleteAlarmConfig(id string) (err error) {
+	if err := dal.DeleteAlarmNameCache(id); err != nil {
+		return errcode.WithData(errcode.CodeCacheError, map[string]interface{}{"cache_error": err.Error()})
+	}
 	err = dal.DeleteAlarmConfig(id)
 	if err != nil {
 		return errcode.WithData(errcode.CodeDBError, map[string]interface{}{
 			"sql_error": err.Error(),
 		})
 	}
-	// 清理告警名称缓存
-	_ = dal.DeleteAlarmNameCache(id)
 	// 清理 alarm_cach_alarm_v6_{alarmId}_{deviceId} 相关缓存
 	go func() {
 		if err := initialize.NewAlarmCache().DeleteByAlarmId(id); err != nil {
@@ -91,18 +92,15 @@ func (*Alarm) UpdateAlarmConfig(req *model.UpdateAlarmConfigReq) (data *model.Al
 		data.Enabled = *req.Enabled
 	}
 
+	if err := dal.DeleteAlarmNameCache(req.ID); err != nil {
+		return nil, errcode.WithData(errcode.CodeCacheError, map[string]interface{}{"cache_error": err.Error()})
+	}
 	err = dal.UpdateAlarmConfig(data)
 	if err != nil {
 		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
 			"sql_error": err.Error(),
 		})
 	}
-	// 清理告警名称缓存，确保后续 GetAlarmNameWithCache 获取最新名称
-	go func() {
-		if err := dal.DeleteAlarmNameCache(req.ID); err != nil {
-			logrus.Error("UpdateAlarmConfig 清理告警名称缓存失败: ", err)
-		}
-	}()
 	data, err = dal.GetAlarmByID(req.ID)
 	if err != nil {
 		return nil, errcode.WithData(errcode.CodeDBError, map[string]interface{}{
@@ -201,8 +199,12 @@ func (*Alarm) AlarmHistoryDescUpdate(req *model.AlarmHistoryDescUpdateReq, tenan
 	return
 }
 
-func (*Alarm) GetDeviceAlarmStatus(req *model.GetDeviceAlarmStatusReq) bool {
-	return dal.GetDeviceAlarmStatus(req)
+func (*Alarm) GetDeviceAlarmStatus(req *model.GetDeviceAlarmStatusReq) (bool, error) {
+	status, err := dal.GetDeviceAlarmStatus(req)
+	if err != nil {
+		return false, errcode.WithData(errcode.CodeDBError, map[string]interface{}{"sql_error": err.Error()})
+	}
+	return status, nil
 }
 
 func (*Alarm) GetConfigByDevice(req *model.GetDeviceAlarmStatusReq) ([]model.AlarmConfig, error) {
@@ -273,10 +275,11 @@ Details: %s`,
 		encoder.SetEscapeHTML(false)
 		err = encoder.Encode(alertData)
 		if err != nil {
-			logrus.Error("构建告警JSON失败:", err)
-		} else {
-			alertJson := strings.TrimSpace(buffer.String())
-			GroupApp.NotificationServicesConfig.ExecuteNotification(alarmConfig.NotificationGroupID, alertJson)
+			return false, ""
+		}
+		alertJson := strings.TrimSpace(buffer.String())
+		if err := GroupApp.NotificationServicesConfig.ExecuteNotification(alarmConfig.NotificationGroupID, alertJson); err != nil {
+			return false, ""
 		}
 	}
 
@@ -412,10 +415,11 @@ Details: %s`,
 		encoder.SetEscapeHTML(false)
 		err = encoder.Encode(alertData)
 		if err != nil {
-			logrus.Error("构建告警JSON失败:", err)
-		} else {
-			alertJson := strings.TrimSpace(buffer.String())
-			GroupApp.NotificationServicesConfig.ExecuteNotification(alarmConfig.NotificationGroupID, alertJson)
+			return false, alarmName, err.Error()
+		}
+		alertJson := strings.TrimSpace(buffer.String())
+		if err := GroupApp.NotificationServicesConfig.ExecuteNotification(alarmConfig.NotificationGroupID, alertJson); err != nil {
+			return false, alarmName, err.Error()
 		}
 	}
 	device_ids_str, _ := json.Marshal(device_ids)
@@ -438,12 +442,6 @@ Details: %s`,
 		logrus.Error(err)
 		return false, alarmName, err.Error()
 	}
-	for _, deviceId := range device_ids {
-		// 已废弃：手机端推送现在通过通知系统统一处理
-		// 不再需要获取 deviceInfo，因为推送已通过通知系统处理
-		_ = deviceId // 避免未使用变量警告
-	}
-	//return true, alarmName, err.Error()
 	return true, alarmName, ""
 }
 

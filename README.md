@@ -45,13 +45,6 @@ Mobile Application Interface
   <img src="./files/iphone-2.png" width="30%">
 </div>
 
-## Demo
-URL: http://demo.thingspanel.cn
-
-Account: test@test.cn
-
-Password: 123456
-
 ## Quick Installation
 Install ThingsPanel from the [all-in-one installer page](https://install.thingspanel.io/). The installer checks the environment, deploys ThingsPanel, and starts the services automatically.
 

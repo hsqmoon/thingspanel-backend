@@ -61,7 +61,7 @@ func (f *StatusUplink) Start(input <-chan *DeviceMessage) error {
 				return
 			case msg := <-input:
 				if msg == nil {
-					f.logger.Warn("Received nil message, skipping")
+					f.logger.Debug("Received nil message, skipping")
 					continue
 				}
 				f.logger.WithField("device_id", msg.DeviceID).Debug("【设备上下线】StatusUplink received message from channel")
@@ -163,7 +163,10 @@ func (f *StatusUplink) processMessage(msg *DeviceMessage) {
 	}).Debug("【设备上下线】Device status updated")
 
 	// 5. 清理设备缓存
-	initialize.DelDeviceCache(device.ID)
+	if err := initialize.DelDeviceCache(device.ID); err != nil {
+		f.logger.WithError(err).WithField("device_id", device.ID).Error("Failed to invalidate device cache")
+		return
+	}
 
 	// 6. 发布到 Redis Pub/Sub (供 WebSocket 订阅)
 	go f.publishToRedis(device, status, msg.Metadata)
